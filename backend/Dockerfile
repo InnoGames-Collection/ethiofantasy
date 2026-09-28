@@ -3,7 +3,7 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 COPY package*.json tsconfig.json ./
-RUN npm ci
+RUN npm install --no-audit
 
 COPY src/ ./src/
 RUN npm run build
@@ -17,7 +17,7 @@ ENV HOST=0.0.0.0
 
 RUN apk add --no-cache dumb-init
 COPY package*.json ./
-RUN npm ci --omit=dev && npm cache clean --force
+RUN npm install --omit=dev --no-audit && npm cache clean --force
 
 COPY --from=builder /app/dist ./dist
 
