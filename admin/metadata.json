@@ -1,0 +1,8 @@
+{
+  "name": "EthioFantasy Admin Control Portal",
+  "description": "Authorized operations control layer and administration portal for EthioFantasy, managing competitions, daily challenges, prizes, player records, football quiz content, and telecom reporting.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

@@ -1,0 +1,6 @@
+{
+  "name": "Football Quiz - Trivia & Player Challenge",
+  "description": "The ultimate football trivia quiz game. Test your football knowledge, guess players, clubs, rules, and world football history across challenging levels.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

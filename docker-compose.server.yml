@@ -1,0 +1,144 @@
+# ==============================================================================
+# EthioFantasy — Complete Production Stack (Web + Admin + API + Postgres + Valkey)
+# Target: GCP Compute Engine VM (innoserver-serv001: 34.41.116.217)
+# Port Block:
+#   - 3400: ethiofantasy-web (Player Quiz Web Client)
+#   - 3402: ethiofantasy-api (Fastify Authoritative API)
+#   - 3403: ethiofantasy-admin (Telecom Operations & Auditor Console)
+#   - 5436: ethiofantasy-postgres (PostgreSQL 16)
+#   - 6386: ethiofantasy-valkey (Valkey 8)
+# ==============================================================================
+
+services:
+  # ── PostgreSQL 16 Enterprise Relational Store ────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: ethiofantasy-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-ethiofantasy}
+      POSTGRES_USER: ${POSTGRES_USER:-ethiofantasy_app}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ethiofantasy_secure_prod_password_2026}
+    volumes:
+      - ethiofantasy_pgdata:/var/lib/postgresql/data
+      - ./db/migrations:/docker-entrypoint-initdb.d:ro
+    ports:
+      - "127.0.0.1:5436:5432"
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-ethiofantasy_app} -d ${POSTGRES_DB:-ethiofantasy}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # ── Valkey 8.x Distributed High-Performance Cache ───────────────────────────
+  valkey:
+    image: valkey/valkey:8-alpine
+    container_name: ethiofantasy-valkey
+    restart: unless-stopped
+    command: ["valkey-server", "--maxmemory", "96mb", "--maxmemory-policy", "allkeys-lru"]
+    ports:
+      - "127.0.0.1:6386:6379"
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # ── EthioFantasy Fastify API ────────────────────────────────────────────────
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: ethiofantasy-api
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3402
+      HOST: 0.0.0.0
+      DOMAIN: innopulseplatform.com
+      DATABASE_URL: "postgresql://${POSTGRES_USER:-ethiofantasy_app}:${POSTGRES_PASSWORD:-ethiofantasy_secure_prod_password_2026}@postgres:5432/${POSTGRES_DB:-ethiofantasy}?sslmode=disable"
+      VALKEY_URL: "redis://valkey:6379"
+      JWT_SECRET: ${JWT_SECRET:-ethiofantasy-telecom-jwt-secret-key-prod-2026}
+      SP_GATEWAY_URL: ${SP_GATEWAY_URL:-http://168.119.53.26:8484}
+      SP_API_KEY: ${SP_API_KEY:-ethiofantasy-sp-api-key-2026}
+      SP_WEBHOOK_SECRET: ${SP_WEBHOOK_SECRET:-ethiofantasy-hmac-webhook-secret-2026}
+    ports:
+      - "127.0.0.1:3402:3402"
+    deploy:
+      resources:
+        limits:
+          memory: 384M
+    depends_on:
+      postgres:
+        condition: service_healthy
+      valkey:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:3402/health || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+
+  # ── Dedicated Admin & Telecom Auditor Operations Console ────────────────────
+  admin:
+    build:
+      context: ./admin
+      dockerfile: Dockerfile.admin
+    container_name: ethiofantasy-admin
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3403
+    ports:
+      - "127.0.0.1:3403:3403"
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:3403/health || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+
+  # ── Public Player Web Client ────────────────────────────────────────────────
+  web:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.web
+    container_name: ethiofantasy-web
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3400
+    ports:
+      - "127.0.0.1:3400:3400"
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:3400/health || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+
+volumes:
+  ethiofantasy_pgdata:
