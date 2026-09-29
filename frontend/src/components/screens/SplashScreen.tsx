@@ -85,17 +85,14 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
           </div>
         </div>
 
-        {/* FOOTBALL QUIZ Athletic Heading */}
+        {/* ETHIOFANTASY Athletic Heading */}
         <h1 className="text-4xl sm:text-5xl font-black text-amber-400 tracking-wider text-center drop-shadow-[0_4px_12px_rgba(0,0,0,0.8)] uppercase">
-          FOOTBALL
-        </h1>
-        <h1 className="text-4xl sm:text-5xl font-black text-amber-400 tracking-wider text-center drop-shadow-[0_4px_12px_rgba(0,0,0,0.8)] uppercase -mt-2">
-          QUIZ
+          ETHIOFANTASY
         </h1>
 
-        {/* EthioFantasy Edition Banner */}
+        {/* Football Quiz Edition Banner */}
         <div className="mt-3 px-4 py-1.5 rounded-full bg-emerald-600/90 border border-emerald-300 shadow-md flex items-center gap-1.5 text-xs font-black text-white uppercase tracking-wider">
-          <span>EthioFantasy Edition · 100 Levels</span>
+          <span>Football Quiz Edition · 100 Levels</span>
         </div>
 
         {/* Sub-banner: Test Your Football Knowledge */}

@@ -31,10 +31,10 @@ export const HeaderHud: React.FC<HeaderHudProps> = ({
           </div>
           <div className="flex flex-col">
             <span className="text-xs font-black text-blue-900 tracking-wider uppercase leading-none">
-              FOOTBALL QUIZ
+              ETHIOFANTASY
             </span>
             <span className="text-[10px] font-bold text-emerald-600 leading-none mt-0.5">
-              EthioFantasy
+              Football Quiz
             </span>
           </div>
         </div>

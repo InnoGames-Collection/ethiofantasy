@@ -380,7 +380,7 @@ export const LevelSelectScreen: React.FC<LevelSelectScreenProps> = ({
             {/* Service info */}
             <div className="pt-3 border-t border-slate-100 flex flex-col items-center text-center">
               <span className="text-xs font-black text-blue-900">
-                EthioFantasy Football Quiz
+                EthioFantasy
               </span>
               <span className="text-[11px] text-slate-500">
                 Version 2.0.0 · 100 Championship Levels
