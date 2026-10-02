@@ -35,12 +35,22 @@ import { getDailyChallengeQuestionsForDate } from '../data/dailyChallengeData';
  * 7. Level Game scores NEVER enter Daily Challenge or 7-Day competition totals.
  */
 
+/**
+ * Authoritative East Africa Time (EAT UTC+3:00) Date calculation
+ * Ethiopia does not observe Daylight Saving Time.
+ */
+export function getCurrentDateEAT(): string {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Africa/Addis_Ababa',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date());
+}
+
 export function getCurrentDateUTC(): string {
-  const now = new Date();
-  const yyyy = now.getUTCFullYear();
-  const mm = String(now.getUTCMonth() + 1).padStart(2, '0');
-  const dd = String(now.getUTCDate()).padStart(2, '0');
-  return `${yyyy}-${mm}-${dd}`;
+  // Alias pointing to authoritative EAT date
+  return getCurrentDateEAT();
 }
 
 export function normalizeMsisdn(input: string): string {
@@ -66,7 +76,7 @@ export function getCompetitionCycleInfo(dateStr: string): {
   cycleStartDate: string;
   daysRemaining: number;
 } {
-  const date = new Date(dateStr + 'T00:00:00Z');
+  const date = new Date(dateStr + 'T00:00:00+03:00');
   const dayOfWeek = date.getUTCDay(); // 0 is Sun, 1 is Mon...
   const dayNumber = dayOfWeek === 0 ? 7 : dayOfWeek;
   const daysRemaining = 7 - dayNumber;

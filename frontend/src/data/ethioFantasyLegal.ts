@@ -20,7 +20,7 @@ export const OFFICIAL_FAQ_ITEMS: FaqItem[] = [
     category: 'Subscription',
     question: 'How do I subscribe to EthioFantasy?',
     answer:
-      'To subscribe, simply send an SMS containing "OK" to shortcode 9401 from your Ethio Telecom line, or enter your mobile number on the login page.',
+      'To subscribe, simply send an SMS containing "OK" to shortcode 900 from your Ethio Telecom line, or enter your mobile number on the login page.',
   },
   {
     category: 'Subscription',
@@ -32,7 +32,7 @@ export const OFFICIAL_FAQ_ITEMS: FaqItem[] = [
     category: 'Subscription',
     question: 'How do I cancel or stop my subscription?',
     answer:
-      'You can cancel at any time with no penalty by sending an SMS containing "STOP" to shortcode 9401 from your Ethio Telecom mobile line.',
+      'You can cancel at any time with no penalty by sending an SMS containing "STOP" to shortcode 900 from your Ethio Telecom mobile line.',
   },
   {
     category: 'Gameplay',
@@ -86,7 +86,7 @@ export const OFFICIAL_TERMS_SECTIONS: TermsSection[] = [
   {
     title: '3. Unsubscription & Cancellation Policy',
     content:
-      'Subscribers may cancel their subscription at any time without penalty or cancellation fees. To unsubscribe, send the keyword "STOP" via SMS to shortcode 9401. Upon cancellation, access to daily challenges and prize eligibility will terminate at the end of the current paid billing period.',
+      'Subscribers may cancel their subscription at any time without penalty or cancellation fees. To unsubscribe, send the keyword "STOP" via SMS to shortcode 900. Upon cancellation, access to daily challenges and prize eligibility will terminate at the end of the current paid billing period.',
   },
   {
     title: '4. Daily Challenge & Competition Rules',

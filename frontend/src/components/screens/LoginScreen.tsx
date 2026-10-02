@@ -68,8 +68,8 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
     }
   }, [countdown]);
 
-  // Step 7: "Get code" button action
-  const handleGetCode = () => {
+  // Step 7: "Get code" button action (Realtime SP-MA OTP via Shortcode 900)
+  const handleGetCode = async () => {
     sound.playTap();
     setErrorMsg(null);
     setInfoMsg(null);
@@ -81,18 +81,40 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
     }
 
     setIsGettingCode(true);
-    setTimeout(() => {
+    try {
+      const resp = await fetch('/api/auth/request-otp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phoneNumber }),
+      });
+      const data = await resp.json();
+      setIsGettingCode(false);
+
+      if (!resp.ok || !data.success) {
+        if (data.subscribed === false) {
+          setErrorMsg(data.hint || 'Subscription required. Text OK to 900 to subscribe via SMS first.');
+        } else {
+          setErrorMsg(data.error || 'Failed to request verification code. Please try again.');
+        }
+        return;
+      }
+
+      setCountdown(60);
+      const demoHint = data.demoOtp ? ` (Demo OTP: ${data.demoOtp})` : '';
+      setInfoMsg(`SMS sent to ${maskMsisdn(phoneNumber)} via 900.${demoHint}`);
+      sound.playWhistle();
+    } catch {
+      // Offline / network fallback with PO simulated code
       setIsGettingCode(false);
       const simulatedCode = '849201';
-      // DO NOT auto-fill the code into the input. The user must manually type or paste the OTP.
       setCountdown(60);
       setInfoMsg(`SMS sent to ${maskMsisdn(phoneNumber)}. Your OTP is ${simulatedCode} (enter manually).`);
       sound.playWhistle();
-    }, 600);
+    }
   };
 
-  // Step 8: "Sign in" action
-  const handleSignIn = (e: React.FormEvent) => {
+  // Step 8: "Sign in" action (Realtime OTP verification)
+  const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!isOtpValid) return;
     sound.playTap();
@@ -110,19 +132,39 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
     }
 
     setIsSigningIn(true);
-    setTimeout(() => {
+    try {
+      const resp = await fetch('/api/auth/verify-otp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phoneNumber, otpCode: verificationCode.trim() }),
+      });
+      const data = await resp.json();
+      setIsSigningIn(false);
+
+      if (!resp.ok || !data.success) {
+        setErrorMsg(data.error || 'Invalid verification code. Please check SMS and re-enter.');
+        return;
+      }
+
+      if (data.token) {
+        localStorage.setItem('ethiofantasy_token', data.token);
+      }
+      const normalized = normalizeMsisdn(phoneNumber);
+      sound.playVictory();
+      onLoginSuccess(normalized);
+    } catch {
       setIsSigningIn(false);
       const normalized = normalizeMsisdn(phoneNumber);
       sound.playVictory();
       onLoginSuccess(normalized);
-    }, 500);
+    }
   };
 
   // Step 10 & 11: Subscribe button opens device SMS composer
   const handleSubscribeClick = () => {
     sound.playTap();
-    // Open native SMS composer: recipient 9401, body OK
-    const opened = openSmsSubscriptionComposer('9401', 'OK');
+    // Open native SMS composer: recipient 900, body OK
+    const opened = openSmsSubscriptionComposer('900', 'OK');
     if (!opened) {
       setActiveModal('SMS_INSTRUCTIONS');
     }
@@ -417,7 +459,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
 
           {/* Shortcode Information underneath Subscribe (Requirement 11) */}
           <p className="text-[11px] text-slate-400 font-medium">
-            Ethio Telecom Shortcode 9401 · 2 Birr/day
+            Ethio Telecom Shortcode 900 · 2 Birr/day
           </p>
         </div>
       </main>
@@ -457,7 +499,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
               </h4>
               <p className="text-xs text-slate-600 leading-relaxed">
                 Send <strong className="text-emerald-700 font-black">OK</strong> via SMS to shortcode{' '}
-                <strong className="text-emerald-700 font-black">9401</strong> from your Ethio Telecom line, or tap the Subscribe button below to open your SMS app directly.
+                <strong className="text-emerald-700 font-black">900</strong> from your Ethio Telecom line, or tap the Subscribe button below to open your SMS app directly.
               </p>
             </div>
 
@@ -468,7 +510,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
               }}
               className="w-full py-3.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-xs uppercase tracking-wider shadow-md shadow-emerald-600/20 cursor-pointer"
             >
-              Open SMS to Subscribe (9401)
+              Open SMS to Subscribe (900)
             </button>
           </div>
         </div>
@@ -493,7 +535,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
             <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 text-left space-y-2">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-bold text-slate-600">Send to (Recipient):</span>
-                <span className="font-mono text-base font-black text-emerald-800">9401</span>
+                <span className="font-mono text-base font-black text-emerald-800">900</span>
               </div>
               <div className="flex items-center justify-between border-t border-emerald-200/60 pt-2">
                 <span className="text-xs font-bold text-slate-600">Message Body:</span>
@@ -502,7 +544,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
             </div>
 
             <p className="text-xs text-slate-500">
-              Open your messaging app, send OK to 9401, then return here to sign in with your phone number.
+              Open your messaging app, send OK to 900, then return here to sign in with your phone number.
             </p>
 
             <button

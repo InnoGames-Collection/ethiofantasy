@@ -4,7 +4,7 @@
  * and provides a graceful fallback dialog if opening fails or environment does not support sms:.
  */
 export function openSmsSubscriptionComposer(
-  recipient: string = '9401',
+  recipient: string = '900',
   body: string = 'OK'
 ): boolean {
   try {

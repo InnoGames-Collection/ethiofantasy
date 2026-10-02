@@ -24,12 +24,22 @@ export async function authRoutes(fastify: FastifyInstance) {
       return reply.status(400).send({ error: 'Invalid Ethiopian phone format. Enter e.g. 0912345678' });
     }
 
-    // Check system mode from settings
+    // Check system mode and authoritative shortcode from settings
     const settingsRes = await pool.query(`SELECT system_mode, shortcode, daily_subscription_price_birr FROM service_settings LIMIT 1`);
     const systemMode = settingsRes.rows[0]?.system_mode || 'PRODUCTION';
-    const shortcode = settingsRes.rows[0]?.shortcode || '9401';
+    const shortcode = settingsRes.rows[0]?.shortcode || env.SHORTCODE || '900';
 
-    // Check subscription status in database
+    // 1. Check if MSISDN is a pre-seeded test/QA subscriber in database
+    let testSub: any = null;
+    try {
+      const testSubRes = await pool.query(
+        `SELECT default_otp, tier, name FROM test_subscriber_otps WHERE msisdn = $1 LIMIT 1`,
+        [norm]
+      );
+      testSub = testSubRes.rows[0];
+    } catch (e) {}
+
+    // 2. Check live subscription status in database
     const subRes = await pool.query(
       `SELECT status, expires_at, next_billing_at 
        FROM subscriptions 
@@ -39,7 +49,7 @@ export async function authRoutes(fastify: FastifyInstance) {
       [norm]
     );
 
-    const isSubscribed = subRes.rows.length > 0;
+    const isSubscribed = subRes.rows.length > 0 || Boolean(testSub);
     const isDevOrDemo = env.NODE_ENV === 'development' || systemMode === 'DEMO';
 
     // In production, strictly enforce subscription gating
@@ -52,30 +62,45 @@ export async function authRoutes(fastify: FastifyInstance) {
       });
     }
 
-    // Generate 6-digit OTP
-    const otp = isDevOrDemo ? '123456' : Math.floor(100000 + Math.random() * 900000).toString();
+    // Determine 6-digit OTP code (Test subscribers use predefined deterministic code)
+    const otp = testSub
+      ? testSub.default_otp
+      : isDevOrDemo
+      ? '849201'
+      : Math.floor(100000 + Math.random() * 900000).toString();
 
-    // Cache with 5-minute TTL (fallback in memory/log if valkey is offline)
+    // Cache in Valkey / Redis with 5-minute TTL
     try {
       await cache.set(`otp:${norm}`, otp, 'EX', 300);
     } catch (e) {
-      console.warn('[Cache] Could not set redis key for OTP, using memory fallback');
+      console.warn('[Cache] Could not set redis key for OTP, using database fallback');
     }
 
-    // Trigger Telecom SP Gateway -> SP triggers MA to deliver SMS OTP to MSISDN
+    // Trigger Telecom SP Gateway -> SP triggers MA (via shortcode 900) to deliver SMS OTP to MSISDN
     const spResult = await SpService.sendMt({
       msisdn: norm,
       message: `Your EthioFantasy login verification code is ${otp}. Valid for 5 minutes. (EAT ${getEatTimestampString().slice(11, 16)})`,
       type: 'otp',
     });
 
+    // Record OTP persistently in database with EAT expiration
+    try {
+      await pool.query(
+        `INSERT INTO otp_verification_codes (msisdn, code, channel, delivery_status, expires_at, attempts_count)
+         VALUES ($1, $2, 'SMS_900', $3, NOW() + INTERVAL '5 minutes', 0)
+         ON CONFLICT (msisdn) DO UPDATE
+         SET code = EXCLUDED.code, expires_at = NOW() + INTERVAL '5 minutes', delivery_status = EXCLUDED.delivery_status`,
+        [norm, otp, spResult.success ? 'DISPATCHED_TO_MA_900' : 'QUEUED_LOCAL']
+      );
+    } catch (e) {}
+
     return reply.send({
       success: true,
       subscribed: isSubscribed || isDevOrDemo,
-      message: `Verification code sent to ${maskMsisdn(norm)} via SMS.`,
+      message: `Verification code sent to ${maskMsisdn(norm)} via SMS (Shortcode 900).`,
       maskedMsisdn: maskMsisdn(norm),
-      spStatus: spResult.success ? 'SENT_TO_MA' : 'FAILED',
-      demoOtp: isDevOrDemo ? otp : undefined,
+      spStatus: spResult.success ? 'SENT_TO_MA_900' : 'QUEUED',
+      demoOtp: (testSub || isDevOrDemo) ? otp : undefined,
     });
   });
 
@@ -96,8 +121,33 @@ export async function authRoutes(fastify: FastifyInstance) {
       cachedOtp = await cache.get(`otp:${norm}`);
     } catch (e) {}
 
-    // Allow static demo OTP in development/demo or matching cached OTP
-    const isValidOtp = otpCode === '123456' || (cachedOtp && otpCode === cachedOtp);
+    // Check DB OTP if not in Redis
+    let dbOtp: string | null = null;
+    try {
+      const dbOtpRes = await pool.query(
+        `SELECT code FROM otp_verification_codes WHERE msisdn = $1 AND expires_at > NOW() LIMIT 1`,
+        [norm]
+      );
+      dbOtp = dbOtpRes.rows[0]?.code || null;
+    } catch (e) {}
+
+    // Check test subscriber table
+    let testSubOtp: string | null = null;
+    try {
+      const testSubRes = await pool.query(
+        `SELECT default_otp FROM test_subscriber_otps WHERE msisdn = $1 LIMIT 1`,
+        [norm]
+      );
+      testSubOtp = testSubRes.rows[0]?.default_otp || null;
+    } catch (e) {}
+
+    // Allow matching cached OTP, DB OTP, test subscriber default OTP, or standard test codes
+    const isValidOtp =
+      (cachedOtp && otpCode === cachedOtp) ||
+      (dbOtp && otpCode === dbOtp) ||
+      (testSubOtp && otpCode === testSubOtp) ||
+      (env.NODE_ENV === 'development' && (otpCode === '123456' || otpCode === '849201'));
+
     if (!isValidOtp) {
       return reply.status(400).send({ error: 'Invalid or expired verification code' });
     }

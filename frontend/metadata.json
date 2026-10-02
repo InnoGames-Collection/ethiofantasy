@@ -1,6 +1,6 @@
 {
-  "name": "Football Quiz - Trivia & Player Challenge",
-  "description": "The ultimate football trivia quiz game. Test your football knowledge, guess players, clubs, rules, and world football history across challenging levels.",
+  "name": "EthioFantasy",
+  "description": "EthioFantasy - The ultimate football trivia quiz game and 7-day championship competition.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }
