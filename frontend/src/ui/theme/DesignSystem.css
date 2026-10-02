@@ -1,0 +1,493 @@
+/* Football Quiz League - Reusable Football Design System (FDS) Tokens & Utilities */
+
+:root {
+  /* Centralized Ethio Telecom & Football Palette */
+  --fds-ethio-green: #00C853;
+  --fds-green-pitch: #00C853;
+  --fds-green-dark: #009624;
+  --fds-green-gradient: linear-gradient(135deg, #00C853 0%, #009624 100%);
+  --fds-green-glow: rgba(0, 200, 83, 0.45);
+
+  --fds-gold-primary: #FFD54F;
+  --fds-gold-dark: #F57F17;
+  --fds-gold-gradient: linear-gradient(135deg, #FFD54F 0%, #F57F17 100%);
+  --fds-gold-glow: rgba(255, 213, 79, 0.4);
+
+  --fds-blue-main: #3B82F6;
+  --fds-blue-dark: #1E3A8A;
+  --fds-blue-accent: #60A5FA;
+  
+  --ethio-deep-navy: rgba(7, 27, 45, 0.95);
+
+  --fds-red-live: #EF4444;
+  --fds-red-glow: rgba(239, 68, 68, 0.6);
+
+  --fds-bg-dark: #020617;
+  --fds-bg-surface: rgba(7, 27, 45, 0.85);
+  --fds-border-glass: rgba(255, 255, 255, 0.16);
+
+  --fds-text-main: #ffffff;
+  --fds-text-muted: #cbd5e1;
+  --fds-text-dim: #94a3b8;
+
+  /* Typography Scale */
+  --fds-font-main: 'Inter', system-ui, -apple-system, sans-serif;
+  --fds-font-mono: 'JetBrains Mono', monospace, sans-serif;
+
+  --fds-font-xs: 12px;
+  --fds-font-sm: 14px;
+  --fds-font-md: 16px;
+  --fds-font-lg: 20px;
+  --fds-font-xl: 28px;
+  --fds-font-xxl: 36px;
+
+  /* Strict 8-Point Spacing Scale: 4, 8, 12, 16, 24, 32, 48 */
+  --fds-space-4: 4px;
+  --fds-space-8: 8px;
+  --fds-space-12: 12px;
+  --fds-space-16: 16px;
+  --fds-space-24: 24px;
+  --fds-space-32: 32px;
+  --fds-space-48: 48px;
+
+  /* Border Radii */
+  --fds-radius-sm: 8px;
+  --fds-radius-md: 14px;
+  --fds-radius-lg: 20px;
+  --fds-radius-full: 9999px;
+}
+
+/* Material 3 & Premium Control Styles */
+.m3-btn, .fds-btn {
+  min-height: 48px;
+  padding: var(--fds-space-12) var(--fds-space-24);
+  border-radius: var(--fds-radius-md);
+  font-weight: 800;
+  font-size: var(--fds-font-sm);
+  font-family: var(--fds-font-main);
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  border: none;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--fds-space-8);
+  transition: transform 180ms cubic-bezier(0.2, 0, 0, 1), box-shadow 180ms cubic-bezier(0.2, 0, 0, 1), background-color 180ms ease;
+  position: relative;
+  overflow: hidden;
+  will-change: transform, box-shadow;
+  touch-action: manipulation;
+  user-select: none;
+}
+
+.m3-btn:hover, .fds-btn:hover {
+  transform: translateY(-2px) scale(1.02);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+.m3-btn:active, .fds-btn:active {
+  transform: translateY(1px) scale(0.97);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.m3-btn-primary, .fds-btn-green {
+  background: var(--fds-green-gradient);
+  color: #ffffff;
+  box-shadow: 0 6px 20px var(--fds-green-glow);
+  border: 1px solid rgba(74, 222, 128, 0.4);
+}
+
+.m3-btn-gold, .fds-btn-gold {
+  background: var(--fds-gold-gradient);
+  color: #020617;
+  box-shadow: 0 6px 20px var(--fds-gold-glow);
+  border: 1px solid rgba(255, 232, 102, 0.5);
+}
+
+.m3-btn-secondary {
+  background: rgba(255, 255, 255, 0.08);
+  color: #ffffff;
+  border: 1px solid var(--fds-border-glass);
+  backdrop-filter: blur(12px);
+}
+
+.m3-btn-icon {
+  min-height: 48px;
+  min-width: 48px;
+  padding: 0;
+  border-radius: var(--fds-radius-full);
+}
+
+/* Material 3 Ripple Effect */
+.m3-ripple-container {
+  position: relative;
+  overflow: hidden;
+}
+
+.m3-ripple-wave {
+  position: absolute;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.35);
+  transform: scale(0);
+  animation: m3-ripple 400ms ease-out forwards;
+  pointer-events: none;
+}
+
+@keyframes m3-ripple {
+  to {
+    transform: scale(4);
+    opacity: 0;
+  }
+}
+
+/* Stadium Animated Beams & Atmosphere */
+.stadium-bg-wrapper {
+  position: relative;
+  background: radial-gradient(circle at 50% 20%, rgba(0, 200, 83, 0.15) 0%, rgba(7, 27, 45, 0.98) 80%);
+  overflow: hidden;
+}
+
+.stadium-beam {
+  position: absolute;
+  top: -20%;
+  width: 180px;
+  height: 140%;
+  background: linear-gradient(180deg, rgba(255, 213, 79, 0.15) 0%, rgba(0, 200, 83, 0.02) 80%, transparent 100%);
+  filter: blur(24px);
+  transform-origin: top center;
+  pointer-events: none;
+  animation: beamSweep 8s ease-in-out infinite alternate;
+}
+
+.stadium-beam-left {
+  left: 10%;
+  animation-delay: 0s;
+}
+
+.stadium-beam-right {
+  right: 10%;
+  animation-delay: -4s;
+}
+
+@keyframes beamSweep {
+  0% { transform: rotate(-12deg) scaleX(0.9); opacity: 0.4; }
+  50% { transform: rotate(0deg) scaleX(1.1); opacity: 0.8; }
+  100% { transform: rotate(12deg) scaleX(0.9); opacity: 0.4; }
+}
+
+/* Floating Particles */
+.floating-ball-graphic {
+  position: absolute;
+  pointer-events: none;
+  opacity: 0.08;
+  filter: drop-shadow(0 10px 20px rgba(0,0,0,0.5));
+  animation: floatBall 6s ease-in-out infinite alternate;
+}
+
+@keyframes floatBall {
+  0% { transform: translateY(0) rotate(0deg); }
+  100% { transform: translateY(-20px) rotate(30deg); }
+}
+
+/* -------------------------------------------------------------
+ * ETHIOFANTASY PREMIUM VISUAL SYSTEM 
+ * ------------------------------------------------------------- */
+
+/* Base Backgrounds */
+.ethio-bg-main {
+  background-image: url('/assets/images/background_main.png');
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-color: #0b1120;
+  background-attachment: fixed;
+}
+
+.ethio-bg-quiz {
+  background-image: url('/assets/images/background_quiz.png');
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-color: #0b1120;
+  background-attachment: fixed;
+}
+
+.ethio-bg-result {
+  background-image: url('/assets/images/background_result.png');
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-color: #0b1120;
+  background-attachment: fixed;
+}
+
+/* Layering System */
+.ethio-layer {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+}
+
+.ethio-layer-pitch {
+  background-image: url('/assets/images/pitch_texture.png');
+  z-index: 1;
+  opacity: 0.08; /* Subtle texture (< 10%) */
+}
+
+.ethio-layer-overlay {
+  background-image: url('/assets/images/stadium_overlay.png');
+  z-index: 2;
+  opacity: 0.15; /* Cinematic depth (10-20%) */
+}
+
+.ethio-layer-lights {
+  background-image: url('/assets/images/stadium_lights.png');
+  z-index: 3;
+  opacity: 0.15; /* Light atmosphere (~15%) */
+  mix-blend-mode: screen; /* Makes lights blend well */
+}
+
+/* Clickable Image Cards */
+.ethio-image-card {
+  width: 100%;
+  height: auto;
+  cursor: pointer;
+  transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275), filter 0.2s ease;
+  filter: drop-shadow(0 8px 16px rgba(0,0,0,0.4));
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.ethio-image-card:hover, .ethio-image-card:active {
+  transform: scale(1.03);
+  filter: drop-shadow(0 12px 24px rgba(0,0,0,0.6));
+}
+
+
+/* Entrance Animation Utilities */
+.fade-in-up {
+  opacity: 0;
+  transform: translateY(16px);
+  animation: fadeInUp 350ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes fadeInUp {
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ==========================================================================
+   ETHIOFANTASY PROFILE / ACCOUNT COMPONENT SYSTEM
+   ========================================================================== */
+
+/* Glass Cards */
+.ethio-profile-group {
+  margin-bottom: 24px;
+}
+
+.ethio-profile-group-title {
+  font-size: 13px;
+  font-weight: 900;
+  color: var(--fds-ethio-green);
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  margin-bottom: 12px;
+  padding-left: 8px;
+  text-shadow: 0 0 12px rgba(0, 200, 83, 0.3);
+}
+
+.ethio-profile-card {
+  background: linear-gradient(145deg, rgba(7, 27, 45, 0.85) 0%, rgba(6, 63, 50, 0.6) 100%);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 22px;
+  overflow: hidden;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4), inset 0 1px 1px rgba(255, 255, 255, 0.05), inset 0 -4px 20px rgba(8, 116, 67, 0.15);
+  position: relative;
+}
+
+.ethio-profile-card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0; height: 40%;
+  background: linear-gradient(to bottom, rgba(255, 255, 255, 0.03), transparent);
+  pointer-events: none;
+}
+
+/* Nav Row System */
+.ethio-nav-row {
+  display: flex;
+  align-items: center;
+  padding: 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.2, 0, 0, 1);
+  min-height: 64px;
+  box-sizing: border-box;
+  position: relative;
+  overflow: hidden;
+}
+
+.ethio-nav-row:active {
+  background: rgba(255, 255, 255, 0.03);
+  transform: scale(0.98);
+  box-shadow: inset 0 0 20px rgba(0, 200, 83, 0.05);
+}
+
+.ethio-nav-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: rgba(7, 27, 45, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3), 0 0 12px rgba(0, 200, 83, 0.1);
+  margin-right: 16px;
+  flex-shrink: 0;
+  transition: all 0.2s ease;
+}
+
+.ethio-nav-icon svg {
+  width: 24px;
+  height: 24px;
+  filter: drop-shadow(0 2px 4px rgba(0,0,0,0.5));
+}
+
+.ethio-nav-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.ethio-nav-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--fds-text-main);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ethio-nav-desc {
+  font-size: 13px;
+  color: var(--fds-text-dim);
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ethio-nav-badge {
+  background: var(--fds-red-live);
+  color: white;
+  font-size: 11px;
+  font-weight: 800;
+  min-width: 20px;
+  height: 20px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: 8px;
+  padding: 0 6px;
+  box-shadow: 0 0 8px var(--fds-red-glow);
+}
+
+.ethio-nav-chevron {
+  color: var(--fds-text-dim);
+  font-size: 14px;
+  margin-left: 12px;
+  font-weight: bold;
+}
+
+/* Button System */
+.ethio-profile-btn {
+  width: 100%;
+  min-height: 48px;
+  padding: 14px 20px;
+  border-radius: 12px;
+  font-weight: 700;
+  font-size: 15px;
+  font-family: var(--fds-font-main);
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: manipulation;
+  
+  /* Interaction Standard */
+  position: relative;
+  overflow: hidden;
+  transition: all 0.2s cubic-bezier(0.2, 0, 0, 1);
+}
+
+/* Liquid-Glass subtle light flow */
+.ethio-profile-btn::before {
+  content: '';
+  position: absolute;
+  top: 0; left: -100%; width: 50%; height: 100%;
+  background: linear-gradient(to right, transparent, rgba(255,255,255,0.15), transparent);
+  transform: skewX(-20deg);
+  pointer-events: none;
+  transition: left 0.4s ease-out;
+}
+
+.ethio-profile-btn:hover {
+  filter: brightness(1.1);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+.ethio-profile-btn:hover::before {
+  left: 150%;
+  transition: left 0.6s ease-in-out;
+}
+
+.ethio-profile-btn:active {
+  transform: scale(0.97);
+  filter: brightness(0.95);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.6);
+}
+
+.ethio-profile-btn-primary {
+  background: linear-gradient(135deg, var(--fds-green-pitch) 0%, var(--fds-green-dark) 100%);
+  color: white;
+  box-shadow: 0 4px 15px rgba(0, 200, 83, 0.3);
+  border: 1px solid rgba(74, 222, 128, 0.3);
+}
+
+.ethio-profile-btn-secondary {
+  background: rgba(255, 255, 255, 0.08);
+  color: white;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  backdrop-filter: blur(12px);
+}
+
+.ethio-profile-btn-destructive {
+  background: rgba(239, 68, 68, 0.1);
+  color: #fca5a5;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.ethio-profile-btn-gold {
+  background: linear-gradient(135deg, var(--fds-gold-primary) 0%, var(--fds-gold-dark) 100%);
+  color: var(--fds-bg-dark);
+  box-shadow: 0 4px 15px rgba(255, 213, 79, 0.3);
+  border: 1px solid rgba(255, 232, 102, 0.5);
+}

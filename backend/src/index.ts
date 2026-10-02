@@ -11,6 +11,9 @@ import { dailyChallengeRoutes } from './routes/dailyChallenge.routes.js';
 import { leaderboardRoutes } from './routes/leaderboard.routes.js';
 import { webhookRoutes } from './routes/webhook.routes.js';
 import { adminRoutes } from './routes/admin.routes.js';
+import { playerRoutes } from './routes/player.routes.js';
+import { questionsRoutes } from './routes/questions.routes.js';
+import { matchRoutes } from './routes/match.routes.js';
 import { startCronJobs } from './cron/scheduler.js';
 
 const fastify = Fastify({
@@ -57,6 +60,9 @@ async function main() {
   await fastify.register(dailyChallengeRoutes, { prefix: '/api/daily-challenge' });
   await fastify.register(leaderboardRoutes, { prefix: '/api/leaderboard' });
   await fastify.register(webhookRoutes, { prefix: '/api/webhooks' });
+  await fastify.register(playerRoutes, { prefix: '/api/player' });
+  await fastify.register(questionsRoutes, { prefix: '/api/questions' });
+  await fastify.register(matchRoutes, { prefix: '/api/match' });
   await fastify.register(adminRoutes, { prefix: '/api' });
 
   // 5. Background Schedulers

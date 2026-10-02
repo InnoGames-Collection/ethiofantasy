@@ -3,20 +3,16 @@ import { DailyChallengeEngine } from '../services/dailyChallengeEngine.js';
 
 export async function dailyChallengeRoutes(fastify: FastifyInstance) {
   /**
-   * Check status and 1-attempt-per-day eligibility
+   * Check status, 1-attempt-per-day eligibility, and return today's questions
    */
   fastify.get('/status', async (req, reply) => {
-    const query = req.query as { msisdn?: string; date?: string };
+    const query = req.query as { msisdn?: string; date?: string; locale?: 'en' | 'am' | 'om' };
     const date = query.date || new Date().toISOString().split('T')[0];
     const msisdn = query.msisdn || '251911000000';
+    const locale = query.locale || 'en';
 
-    const check = await DailyChallengeEngine.checkEligibility(msisdn, date);
-    return reply.send({
-      date,
-      canAttempt: check.canAttempt,
-      reason: check.reason,
-      attempt: check.attempt,
-    });
+    const challengeData = await DailyChallengeEngine.getTodayChallenge(msisdn, date, locale);
+    return reply.send(challengeData);
   });
 
   /**
