@@ -188,7 +188,7 @@ export interface SubscriptionRecord {
   status: 'ACTIVE' | 'INACTIVE' | 'CANCELLED' | 'PENDING';
   plan: 'DAILY_RECURRING';
   priceBirr: number;
-  channel: 'SMS_900' | 'SMS_9401' | 'USSD' | 'WEB' | 'TELEBIRR';
+  channel: 'SMS_6415' | 'SMS_900' | 'SMS_9401' | 'USSD' | 'WEB' | 'TELEBIRR';
   activatedAt: string;
   lastBilledAt: string;
   nextRenewalAt: string;

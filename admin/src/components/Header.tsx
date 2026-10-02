@@ -37,7 +37,7 @@ export const Header: React.FC<HeaderProps> = ({
         {/* Ethio Telecom Info pill */}
         <div className="hidden lg:flex items-center space-x-2 text-xs bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 text-slate-600">
           <Phone className="w-3.5 h-3.5 text-blue-600" />
-          <span className="font-medium text-slate-800">Shortcode: 900</span>
+          <span className="font-medium text-slate-800">Shortcode: 6415</span>
           <span className="text-slate-300">|</span>
           <span className="text-emerald-700 font-semibold">2 Birr/Day</span>
         </div>

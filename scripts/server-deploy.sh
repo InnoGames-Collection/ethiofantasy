@@ -36,6 +36,14 @@ for i in {1..30}; do
   sleep 1
 done
 
+echo "📦 Ensuring database migrations and shortcode 6415 are applied..."
+for migration in db/migrations/*.sql; do
+  if [ -f "$migration" ]; then
+    echo "  Executing migration: $(basename "$migration")..."
+    docker compose -f docker-compose.server.yml exec -T postgres psql -U ethiofantasy_app -d ethiofantasy -f "/docker-entrypoint-initdb.d/$(basename "$migration")" || true
+  fi
+done
+
 docker compose -f docker-compose.server.yml build api
 docker compose -f docker-compose.server.yml up -d api
 

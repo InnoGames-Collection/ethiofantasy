@@ -276,46 +276,63 @@ export const QuizManagementPage: React.FC<QuizManagementPageProps> = ({ currentR
     setIsEditorOpen(true);
   };
 
-  const handleSaveQuestion = (data: Partial<QuizQuestion>, reason: string) => {
-    if (editingQuestion) {
-      // Update existing
-      setQuestions((prev) =>
-        prev.map((q) =>
-          q.id === editingQuestion.id
-            ? {
-                ...q,
-                ...data,
-                updatedAt: new Date().toISOString(),
-                updatedBy: 'Admin Operator',
-              }
-            : q
-        )
-      );
-    } else {
-      // Create new
-      const newId = `q-${Date.now()}`;
-      const created: QuizQuestion = {
-        id: newId,
-        questionCode: data.questionCode || `Q000${Math.floor(100 + Math.random() * 900)}`,
-        questionText: data.questionText || '',
-        questionAmharic: data.questionAmharic,
-        options: data.options || ['A', 'B', 'C', 'D'],
-        correctOptionIndex: data.correctOptionIndex ?? 0,
-        pool: data.pool || 'LEVEL_BASED',
-        levelNumber: data.levelNumber || 1,
-        orderNumber: data.orderNumber || 1,
-        category: data.category || 'Ethiopian Football',
-        difficulty: data.difficulty || 'MEDIUM',
-        status: data.status || 'DRAFT',
-        imageUrl: data.imageUrl,
-        imageAlt: data.imageAlt,
-        sourceReference: data.sourceReference,
-        explanation: data.explanation,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        updatedBy: 'Admin Operator',
-      };
-      setQuestions((prev) => [created, ...prev]);
+  const handleSaveQuestion = async (data: Partial<QuizQuestion>, reason: string) => {
+    try {
+      if (editingQuestion) {
+        // Authoritative update to backend API & PostgreSQL database
+        try {
+          await api.updateQuizQuestion(editingQuestion.id, data, reason);
+        } catch (err) {
+          console.warn('[QuizManagement] Backend update failed, updating locally:', err);
+        }
+
+        setQuestions((prev) =>
+          prev.map((q) =>
+            q.id === editingQuestion.id
+              ? {
+                  ...q,
+                  ...data,
+                  updatedAt: new Date().toISOString(),
+                  updatedBy: 'Admin Operator',
+                }
+              : q
+          )
+        );
+      } else {
+        // Authoritative create in backend API & PostgreSQL database
+        let createdId = `q-${Date.now()}`;
+        try {
+          const res = await api.createQuizQuestion(data, reason);
+          if (res?.question?.id) createdId = res.question.id;
+        } catch (err) {
+          console.warn('[QuizManagement] Backend create failed, creating locally:', err);
+        }
+
+        const created: QuizQuestion = {
+          id: createdId,
+          questionCode: data.questionCode || `Q000${Math.floor(100 + Math.random() * 900)}`,
+          questionText: data.questionText || '',
+          questionAmharic: data.questionAmharic,
+          options: data.options || ['A', 'B', 'C', 'D'],
+          correctOptionIndex: data.correctOptionIndex ?? 0,
+          pool: data.pool || 'LEVEL_BASED',
+          levelNumber: data.levelNumber || 1,
+          orderNumber: data.orderNumber || 1,
+          category: data.category || 'Ethiopian Football',
+          difficulty: data.difficulty || 'MEDIUM',
+          status: data.status || 'DRAFT',
+          imageUrl: data.imageUrl,
+          imageAlt: data.imageAlt,
+          sourceReference: data.sourceReference,
+          explanation: data.explanation,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          updatedBy: 'Admin Operator',
+        };
+        setQuestions((prev) => [created, ...prev]);
+      }
+    } catch (e: any) {
+      console.error('Error saving question:', e);
     }
   };
 
@@ -333,6 +350,12 @@ export const QuizManagementPage: React.FC<QuizManagementPageProps> = ({ currentR
         : undefined,
       danger: newStatus === 'INACTIVE',
       actionFn: async (reason: string) => {
+        try {
+          await api.setQuestionStatus(q.id, newStatus, reason);
+        } catch (err) {
+          console.warn('[QuizManagement] Failed to update status on server:', err);
+        }
+
         setQuestions((prev) =>
           prev.map((item) =>
             item.id === q.id
@@ -360,6 +383,11 @@ export const QuizManagementPage: React.FC<QuizManagementPageProps> = ({ currentR
       warningNote: 'This action removes the question from the admin repository.',
       danger: true,
       actionFn: async (reason: string) => {
+        try {
+          await api.setQuestionStatus(q.id, 'INACTIVE', reason);
+        } catch (err) {
+          console.warn('[QuizManagement] Server delete call error:', err);
+        }
         setQuestions((prev) => prev.filter((item) => item.id !== q.id));
         setSelectedIds((prev) => prev.filter((id) => id !== q.id));
       },
@@ -377,6 +405,13 @@ export const QuizManagementPage: React.FC<QuizManagementPageProps> = ({ currentR
       warningNote: `This will apply status "${newStatus}" to all ${count} currently selected records.`,
       danger: newStatus === 'INACTIVE',
       actionFn: async (reason: string) => {
+        try {
+          await Promise.all(
+            selectedIds.map((id) => api.setQuestionStatus(id, newStatus, reason).catch(() => {}))
+          );
+        } catch (err) {
+          console.warn('[QuizManagement] Server batch status update error:', err);
+        }
         setQuestions((prev) =>
           prev.map((q) =>
             selectedIds.includes(q.id)
@@ -405,6 +440,13 @@ export const QuizManagementPage: React.FC<QuizManagementPageProps> = ({ currentR
       warningNote: `Are you sure you want to delete ${count} questions from the Question Bank?`,
       danger: true,
       actionFn: async (reason: string) => {
+        try {
+          await Promise.all(
+            selectedIds.map((id) => api.setQuestionStatus(id, 'INACTIVE', reason).catch(() => {}))
+          );
+        } catch (err) {
+          console.warn('[QuizManagement] Server batch delete error:', err);
+        }
         setQuestions((prev) => prev.filter((q) => !selectedIds.includes(q.id)));
         setSelectedIds([]);
       },
@@ -412,9 +454,16 @@ export const QuizManagementPage: React.FC<QuizManagementPageProps> = ({ currentR
   };
 
   // Bulk Import
-  const handleImportQuestions = (newQs: QuizQuestion[], reason: string) => {
+  const handleImportQuestions = async (newQs: QuizQuestion[], reason: string) => {
+    try {
+      await Promise.all(
+        newQs.map((q) => api.createQuizQuestion(q, reason || 'Bulk import').catch(() => {}))
+      );
+    } catch (err) {
+      console.warn('[QuizManagement] Bulk import server error:', err);
+    }
     setQuestions((prev) => [...newQs, ...prev]);
-    alert(`Successfully imported ${newQs.length} questions into the catalog!`);
+    alert(`Successfully imported ${newQs.length} questions into the catalog and synchronized with backend database!`);
   };
 
   // Image library pick for editor

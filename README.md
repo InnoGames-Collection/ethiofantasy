@@ -1,6 +1,6 @@
 # EthioFantasy — Ethio Telecom Football Quiz & 7-Day Competition
 
-Enterprise Tier-0 Telecom VAS Service integrating with Ethio Telecom Shortcode `9401` and the SP Messaging Gateway.
+Enterprise Tier-0 Telecom VAS Service integrating with Ethio Telecom Shortcode `6415` and the SP Messaging Gateway.
 
 ## Topology & Ports (`innoserver-serv001: 34.41.116.217`)
 - **Player Web Client (`3400`)**: `https://ethiofantasy.innopulseplatform.com`
@@ -14,7 +14,7 @@ Enterprise Tier-0 Telecom VAS Service integrating with Ethio Telecom Shortcode `
 ethiofantasy/
 ├── frontend/                     # Player quiz UI (100 Levels + Daily Challenge)
 ├── admin/                        # 11-page telecom operator & auditor console
-├── backend/                      # Fastify 5 REST API + SP Shortcode 9401 engine
+├── backend/                      # Fastify 5 REST API + SP Shortcode 6415 engine
 ├── db/migrations/                # PostgreSQL schema migrations
 ├── deploy/nginx/                 # Host NGINX configuration
 ├── scripts/                      # server-deploy.sh & remote-deploy.sh

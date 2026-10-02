@@ -719,7 +719,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
       status: row.status,
       plan: 'DAILY_RECURRING',
       priceBirr: parseFloat(row.price_etb || 5.0),
-      channel: row.channel || 'SMS_9401',
+      channel: row.channel || 'SMS_6415',
       activatedAt: row.created_at ? row.created_at.toISOString() : getEatTimestampString(),
       lastBilledAt: row.last_billed_at ? row.last_billed_at.toISOString() : getEatTimestampString(),
       nextRenewalAt: row.next_billing_at ? row.next_billing_at.toISOString() : getEatTimestampString(),
@@ -744,8 +744,8 @@ export async function adminRoutes(fastify: FastifyInstance) {
     const row = res.rows[0] || {};
     return {
       serviceName: row.service_name || 'EthioFantasy',
-      shortcode: row.shortcode || '9401',
-      subscriptionInstruction: row.subscription_instruction || 'Send OK to 9401',
+      shortcode: row.shortcode || '6415',
+      subscriptionInstruction: row.subscription_instruction || 'Send OK to 6415',
       dailySubscriptionPriceBirr: parseFloat(row.daily_subscription_price_birr || 5.0),
       dailyChallengeEnabled: row.daily_challenge_enabled !== false,
       weeklyCompetitionEnabled: row.weekly_competition_enabled !== false,

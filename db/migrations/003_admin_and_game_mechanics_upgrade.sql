@@ -16,9 +16,9 @@
 CREATE TABLE IF NOT EXISTS service_settings (
     id INT PRIMARY KEY DEFAULT 1 CHECK (id = 1),
     service_name VARCHAR(100) NOT NULL DEFAULT 'EthioFantasy',
-    shortcode VARCHAR(20) NOT NULL DEFAULT '9401',
-    subscription_instruction TEXT NOT NULL DEFAULT 'Send OK to 9401',
-    daily_subscription_price_birr NUMERIC(10,2) NOT NULL DEFAULT 5.00,
+    shortcode VARCHAR(20) NOT NULL DEFAULT '6415',
+    subscription_instruction TEXT NOT NULL DEFAULT 'Send OK to 6415',
+    daily_subscription_price_birr NUMERIC(10,2) NOT NULL DEFAULT 2.00,
     daily_challenge_enabled BOOLEAN NOT NULL DEFAULT TRUE,
     weekly_competition_enabled BOOLEAN NOT NULL DEFAULT TRUE,
     auto_finalize_winners BOOLEAN NOT NULL DEFAULT FALSE,
@@ -33,7 +33,7 @@ CREATE TABLE IF NOT EXISTS service_settings (
 
 -- Seed default settings row if missing
 INSERT INTO service_settings (id, service_name, shortcode, subscription_instruction, daily_subscription_price_birr)
-VALUES (1, 'EthioFantasy', '9401', 'Send OK to 9401', 5.00)
+VALUES (1, 'EthioFantasy', '6415', 'Send OK to 6415', 2.00)
 ON CONFLICT (id) DO NOTHING;
 
 -- 2. Question Image Assets Catalog (Stadiums, Players, Trophies, Matches)

@@ -10,7 +10,7 @@ import { getEatDateString, getEatTimestampString } from '../utils/time.js';
 export async function authRoutes(fastify: FastifyInstance) {
   /**
    * 1. Request OTP code via Ethio Telecom SP-MA Gateway
-   * Enforces active subscription check (SMS keywords OK or 1 to 9401)
+   * Enforces active subscription check (SMS keywords OK or 1 to 6415)
    */
   fastify.post('/request-otp', async (req, reply) => {
     const body = (req.body || {}) as any;
@@ -27,7 +27,7 @@ export async function authRoutes(fastify: FastifyInstance) {
     // Check system mode and authoritative shortcode from settings
     const settingsRes = await pool.query(`SELECT system_mode, shortcode, daily_subscription_price_birr FROM service_settings LIMIT 1`);
     const systemMode = settingsRes.rows[0]?.system_mode || 'PRODUCTION';
-    const shortcode = settingsRes.rows[0]?.shortcode || env.SHORTCODE || '900';
+    const shortcode = settingsRes.rows[0]?.shortcode || env.SHORTCODE || '6415';
 
     // 1. Check if MSISDN is a pre-seeded test/QA subscriber in database
     let testSub: any = null;
@@ -76,7 +76,7 @@ export async function authRoutes(fastify: FastifyInstance) {
       console.warn('[Cache] Could not set redis key for OTP, using database fallback');
     }
 
-    // Trigger Telecom SP Gateway -> SP triggers MA (via shortcode 900) to deliver SMS OTP to MSISDN
+    // Trigger Telecom SP Gateway -> SP triggers MA (via shortcode 6415) to deliver SMS OTP to MSISDN
     const spResult = await SpService.sendMt({
       msisdn: norm,
       message: `Your EthioFantasy login verification code is ${otp}. Valid for 5 minutes. (EAT ${getEatTimestampString().slice(11, 16)})`,
@@ -87,19 +87,19 @@ export async function authRoutes(fastify: FastifyInstance) {
     try {
       await pool.query(
         `INSERT INTO otp_verification_codes (msisdn, code, channel, delivery_status, expires_at, attempts_count)
-         VALUES ($1, $2, 'SMS_900', $3, NOW() + INTERVAL '5 minutes', 0)
+         VALUES ($1, $2, 'SMS_6415', $3, NOW() + INTERVAL '5 minutes', 0)
          ON CONFLICT (msisdn) DO UPDATE
          SET code = EXCLUDED.code, expires_at = NOW() + INTERVAL '5 minutes', delivery_status = EXCLUDED.delivery_status`,
-        [norm, otp, spResult.success ? 'DISPATCHED_TO_MA_900' : 'QUEUED_LOCAL']
+        [norm, otp, spResult.success ? 'DISPATCHED_TO_MA_6415' : 'QUEUED_LOCAL']
       );
     } catch (e) {}
 
     return reply.send({
       success: true,
       subscribed: isSubscribed || isDevOrDemo,
-      message: `Verification code sent to ${maskMsisdn(norm)} via SMS (Shortcode 900).`,
+      message: `Verification code sent to ${maskMsisdn(norm)} via SMS (Shortcode 6415).`,
       maskedMsisdn: maskMsisdn(norm),
-      spStatus: spResult.success ? 'SENT_TO_MA_900' : 'QUEUED',
+      spStatus: spResult.success ? 'SENT_TO_MA_6415' : 'QUEUED',
       demoOtp: (testSub || isDevOrDemo) ? otp : undefined,
     });
   });

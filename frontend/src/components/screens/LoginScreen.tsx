@@ -68,7 +68,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
     }
   }, [countdown]);
 
-  // Step 7: "Get code" button action (Realtime SP-MA OTP via Shortcode 900)
+  // Step 7: "Get code" button action (Realtime SP-MA OTP via Shortcode 6415)
   const handleGetCode = async () => {
     sound.playTap();
     setErrorMsg(null);
@@ -92,7 +92,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
 
       if (!resp.ok || !data.success) {
         if (data.subscribed === false) {
-          setErrorMsg(data.hint || 'Subscription required. Text OK to 900 to subscribe via SMS first.');
+          setErrorMsg(data.hint || 'Subscription required. Text OK to 6415 to subscribe via SMS first.');
         } else {
           setErrorMsg(data.error || 'Failed to request verification code. Please try again.');
         }
@@ -459,7 +459,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
 
           {/* Shortcode Information underneath Subscribe (Requirement 11) */}
           <p className="text-[11px] text-slate-400 font-medium">
-            Ethio Telecom Shortcode 900 · 2 Birr/day
+            Ethio Telecom Shortcode 6415 · 2 Birr/day
           </p>
         </div>
       </main>
@@ -499,7 +499,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
               </h4>
               <p className="text-xs text-slate-600 leading-relaxed">
                 Send <strong className="text-emerald-700 font-black">OK</strong> via SMS to shortcode{' '}
-                <strong className="text-emerald-700 font-black">900</strong> from your Ethio Telecom line, or tap the Subscribe button below to open your SMS app directly.
+                <strong className="text-emerald-700 font-black">6415</strong> from your Ethio Telecom line, or tap the Subscribe button below to open your SMS app directly.
               </p>
             </div>
 
@@ -510,7 +510,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
               }}
               className="w-full py-3.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-xs uppercase tracking-wider shadow-md shadow-emerald-600/20 cursor-pointer"
             >
-              Open SMS to Subscribe (900)
+              Open SMS to Subscribe (6415)
             </button>
           </div>
         </div>
@@ -535,7 +535,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
             <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 text-left space-y-2">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-bold text-slate-600">Send to (Recipient):</span>
-                <span className="font-mono text-base font-black text-emerald-800">900</span>
+                <span className="font-mono text-base font-black text-emerald-800">6415</span>
               </div>
               <div className="flex items-center justify-between border-t border-emerald-200/60 pt-2">
                 <span className="text-xs font-bold text-slate-600">Message Body:</span>
@@ -544,7 +544,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
             </div>
 
             <p className="text-xs text-slate-500">
-              Open your messaging app, send OK to 900, then return here to sign in with your phone number.
+              Open your messaging app, send OK to 6415, then return here to sign in with your phone number.
             </p>
 
             <button

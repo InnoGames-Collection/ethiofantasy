@@ -1,10 +1,10 @@
 /**
- * Utility to reliably open device SMS composer with recipient 9401 and body OK.
+ * Utility to reliably open device SMS composer with recipient 6415 and body OK.
  * Handles iOS (&body=OK) vs standard Android/RFC (?body=OK),
  * and provides a graceful fallback dialog if opening fails or environment does not support sms:.
  */
 export function openSmsSubscriptionComposer(
-  recipient: string = '900',
+  recipient: string = '6415',
   body: string = 'OK'
 ): boolean {
   try {

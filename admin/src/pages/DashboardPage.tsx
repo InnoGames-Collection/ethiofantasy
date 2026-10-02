@@ -48,7 +48,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ stats, onNavigate,
             {kpis.activePlayers.toLocaleString()}
           </div>
           <div className="text-[11px] text-slate-400 mt-1 font-mono">
-            Verified 9401 accounts
+            Verified 6415 accounts
           </div>
         </div>
 
