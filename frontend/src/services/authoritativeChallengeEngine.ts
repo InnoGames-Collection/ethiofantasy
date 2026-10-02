@@ -35,33 +35,12 @@ import { getDailyChallengeQuestionsForDate } from '../data/dailyChallengeData';
  * 7. Level Game scores NEVER enter Daily Challenge or 7-Day competition totals.
  */
 
-/**
- * East Africa Time (EAT) UTC+3:00 date & timestamp calculation
- */
-export function getCurrentDateEAT(): string {
-  const eatTime = new Date(Date.now() + 3 * 60 * 60 * 1000);
-  const yyyy = eatTime.getUTCFullYear();
-  const mm = String(eatTime.getUTCMonth() + 1).padStart(2, '0');
-  const dd = String(eatTime.getUTCDate()).padStart(2, '0');
-  return `${yyyy}-${mm}-${dd}`;
-}
-
-export function getCurrentTimestampEAT(): string {
-  const now = new Date();
-  const eatTime = new Date(now.getTime() + 3 * 60 * 60 * 1000);
-  const yyyy = eatTime.getUTCFullYear();
-  const mm = String(eatTime.getUTCMonth() + 1).padStart(2, '0');
-  const dd = String(eatTime.getUTCDate()).padStart(2, '0');
-  const hh = String(eatTime.getUTCHours()).padStart(2, '0');
-  const min = String(eatTime.getUTCMinutes()).padStart(2, '0');
-  const ss = String(eatTime.getUTCSeconds()).padStart(2, '0');
-  const ms = String(eatTime.getUTCMilliseconds()).padStart(3, '0');
-  return `${yyyy}-${mm}-${dd}T${hh}:${min}:${ss}.${ms}+03:00`;
-}
-
-// Keep getCurrentDateUTC as alias returning EAT date
 export function getCurrentDateUTC(): string {
-  return getCurrentDateEAT();
+  const now = new Date();
+  const yyyy = now.getUTCFullYear();
+  const mm = String(now.getUTCMonth() + 1).padStart(2, '0');
+  const dd = String(now.getUTCDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
 }
 
 export function normalizeMsisdn(input: string): string {
@@ -87,7 +66,7 @@ export function getCompetitionCycleInfo(dateStr: string): {
   cycleStartDate: string;
   daysRemaining: number;
 } {
-  const date = new Date(dateStr + 'T00:00:00+03:00');
+  const date = new Date(dateStr + 'T00:00:00Z');
   const dayOfWeek = date.getUTCDay(); // 0 is Sun, 1 is Mon...
   const dayNumber = dayOfWeek === 0 ? 7 : dayOfWeek;
   const daysRemaining = 7 - dayNumber;

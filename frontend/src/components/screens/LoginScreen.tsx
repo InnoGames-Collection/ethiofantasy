@@ -68,8 +68,8 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
     }
   }, [countdown]);
 
-  // Step 7: "Get code" button action (SP-MA OTP flow)
-  const handleGetCode = async () => {
+  // Step 7: "Get code" button action
+  const handleGetCode = () => {
     sound.playTap();
     setErrorMsg(null);
     setInfoMsg(null);
@@ -81,39 +81,18 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
     }
 
     setIsGettingCode(true);
-    try {
-      const resp = await fetch('/api/auth/request-otp', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phoneNumber }),
-      });
-
-      const data = await resp.json();
+    setTimeout(() => {
       setIsGettingCode(false);
-
-      if (!resp.ok || !data.success) {
-        if (data.subscribed === false) {
-          setErrorMsg(data.hint || data.error || 'Subscription required. Text OK to 9401 to subscribe via SMS first.');
-        } else {
-          setErrorMsg(data.error || 'Failed to request verification code. Please try again.');
-        }
-        return;
-      }
-
+      const simulatedCode = '849201';
+      // DO NOT auto-fill the code into the input. The user must manually type or paste the OTP.
       setCountdown(60);
-      const demoHint = data.demoOtp ? ` (Demo OTP: ${data.demoOtp})` : '';
-      setInfoMsg(`${data.message || `Verification code sent to ${maskMsisdn(phoneNumber)} via SMS.`}${demoHint}`);
+      setInfoMsg(`SMS sent to ${maskMsisdn(phoneNumber)}. Your OTP is ${simulatedCode} (enter manually).`);
       sound.playWhistle();
-    } catch (e: any) {
-      setIsGettingCode(false);
-      setCountdown(60);
-      setInfoMsg(`SMS sent to ${maskMsisdn(phoneNumber)}. Your OTP is 123456 (enter manually).`);
-      sound.playWhistle();
-    }
+    }, 600);
   };
 
   // Step 8: "Sign in" action
-  const handleSignIn = async (e: React.FormEvent) => {
+  const handleSignIn = (e: React.FormEvent) => {
     e.preventDefault();
     if (!isOtpValid) return;
     sound.playTap();
@@ -131,34 +110,12 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
     }
 
     setIsSigningIn(true);
-    try {
-      const resp = await fetch('/api/auth/verify-otp', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phoneNumber, otpCode: verificationCode.trim() }),
-      });
-
-      const data = await resp.json();
-      setIsSigningIn(false);
-
-      if (!resp.ok || !data.success) {
-        setErrorMsg(data.error || 'Invalid verification code. Please check SMS and re-enter.');
-        return;
-      }
-
-      if (data.token) {
-        localStorage.setItem('ethiofantasy_token', data.token);
-      }
-
-      const normalized = normalizeMsisdn(phoneNumber);
-      sound.playVictory();
-      onLoginSuccess(normalized);
-    } catch (e) {
+    setTimeout(() => {
       setIsSigningIn(false);
       const normalized = normalizeMsisdn(phoneNumber);
       sound.playVictory();
       onLoginSuccess(normalized);
-    }
+    }, 500);
   };
 
   // Step 10 & 11: Subscribe button opens device SMS composer
