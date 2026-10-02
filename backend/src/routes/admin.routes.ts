@@ -586,6 +586,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
 
     return res.rows.map((row) => {
       const options = row.options || row.options_en || [];
+      const diffLabel = row.difficulty === 1 ? 'EASY' : row.difficulty === 3 ? 'HARD' : 'MEDIUM';
       return {
         id: row.id,
         levelNumber: row.level_id || 1,
@@ -594,7 +595,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
         questionAmharic: row.prompt_am || '',
         options: Array.isArray(options) ? options : [],
         correctOptionIndex: row.correct_index,
-        difficulty: row.difficulty || 'MEDIUM',
+        difficulty: diffLabel,
         category: row.category || 'FOOTBALL BASICS',
         status: row.status || 'PUBLISHED',
         pool: row.pool || 'LEVEL_BASED',
@@ -608,9 +609,18 @@ export async function adminRoutes(fastify: FastifyInstance) {
     });
   });
 
+  const parseDifficultyInt = (diff: any): number => {
+    if (typeof diff === 'number') return diff;
+    if (diff === 'EASY') return 1;
+    if (diff === 'HARD') return 3;
+    const n = parseInt(diff, 10);
+    return isNaN(n) ? 2 : n;
+  };
+
   fastify.post('/quiz/questions', async (req, reply) => {
     const { data, reason } = req.body as { data: any; reason: string };
     const id = data.id || `q_${Date.now()}`;
+    const diffInt = parseDifficultyInt(data.difficulty);
 
     await pool.query(
       `INSERT INTO quiz_questions 
@@ -623,7 +633,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
         data.questionAmharic || null,
         JSON.stringify(data.options || []),
         data.correctOptionIndex || 0,
-        data.difficulty || 'MEDIUM',
+        diffInt,
         data.category || 'FOOTBALL BASICS',
         data.status || 'PUBLISHED',
         data.pool || 'LEVEL_BASED',
@@ -640,6 +650,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
   fastify.put('/quiz/questions/:id', async (req, reply) => {
     const { id } = req.params as { id: string };
     const { data, reason } = req.body as { data: any; reason: string };
+    const diffInt = parseDifficultyInt(data.difficulty);
 
     await pool.query(
       `UPDATE quiz_questions 
@@ -652,7 +663,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
         data.questionAmharic,
         JSON.stringify(data.options || []),
         data.correctOptionIndex,
-        data.difficulty,
+        diffInt,
         data.category,
         data.status,
         data.pool,
@@ -665,6 +676,15 @@ export async function adminRoutes(fastify: FastifyInstance) {
 
     await logAudit('a0000000-0000-0000-0000-000000000001', 'UPDATE_QUIZ_QUESTION', 'QUIZ_QUESTION', id, null, data, reason);
     return reply.send({ success: true, question: { ...data, id } });
+  });
+
+  fastify.delete('/quiz/questions/:id', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const { reason } = (req.body || {}) as { reason?: string };
+
+    await pool.query(`DELETE FROM quiz_questions WHERE id = $1`, [id]);
+    await logAudit('a0000000-0000-0000-0000-000000000001', 'DELETE_QUIZ_QUESTION', 'QUIZ_QUESTION', id, null, null, reason || 'Admin deleted question');
+    return reply.send({ success: true, id });
   });
 
   fastify.post('/quiz/questions/:id/status', async (req, reply) => {
