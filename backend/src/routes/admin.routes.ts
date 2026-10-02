@@ -551,21 +551,6 @@ export async function adminRoutes(fastify: FastifyInstance) {
   // --------------------------------------------------------------------------
   // Advanced Quiz Question Bank & Media Asset Management
   // --------------------------------------------------------------------------
-  fastify.get('/quiz/levels', async () => {
-    const res = await pool.query(`SELECT * FROM quiz_levels ORDER BY id ASC`);
-    return res.rows.map((row) => ({
-      id: String(row.id),
-      levelNumber: row.id,
-      title: row.title,
-      description: row.subtitle || row.category_title,
-      requiredScore: 80,
-      pointsPerQuestion: 10,
-      totalQuestions: 10,
-      publishedQuestionsCount: 10,
-      status: 'ACTIVE',
-    }));
-  });
-
   fastify.get('/quiz/questions', async (req) => {
     const query = (req.query || {}) as {
       levelNumber?: string;

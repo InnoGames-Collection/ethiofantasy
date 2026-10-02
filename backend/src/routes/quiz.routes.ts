@@ -25,19 +25,30 @@ export async function quizRoutes(fastify: FastifyInstance) {
     }
 
     const levels = levelsRes.rows.map((lvl) => ({
-      id: lvl.id,
+      id: String(lvl.id),
+      levelNumber: lvl.id,
       chapterName: lvl.chapter_name,
       categoryTitle: lvl.category_title,
       title: lvl.title,
       subtitle: lvl.subtitle,
+      description: lvl.subtitle || lvl.category_title,
       iconType: lvl.icon_type,
       accentColor: lvl.accent_color,
       requiredStars: lvl.required_stars,
+      requiredScore: 80,
+      pointsPerQuestion: 10,
+      totalQuestions: 10,
+      publishedQuestionsCount: 10,
+      status: 'ACTIVE',
       stars: progressMap[lvl.id]?.stars || 0,
       score: progressMap[lvl.id]?.score || 0,
     }));
 
-    return reply.send({ levels });
+    if ((req.query as any)?.wrap === 'true') {
+      return reply.send({ levels });
+    }
+
+    return reply.send(levels);
   });
 
   /**
