@@ -4,3 +4,4 @@ dist/
 *.local
 .env
 src_react_backup/
+frontend_vanilla_quiz_backup/

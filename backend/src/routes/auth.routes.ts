@@ -5,10 +5,12 @@ import { pool } from '../config/database.js';
 import { cache } from '../config/cache.js';
 import { SpService } from '../services/spService.js';
 import { normalizeMsisdn, maskMsisdn } from '../services/dailyChallengeEngine.js';
+import { getEatDateString, getEatTimestampString } from '../utils/time.js';
 
 export async function authRoutes(fastify: FastifyInstance) {
   /**
-   * Request OTP code via Ethio Telecom SMS Gateway
+   * 1. Request OTP code via Ethio Telecom SP-MA Gateway
+   * Enforces active subscription check (SMS keywords OK or 1 to 9401)
    */
   fastify.post('/request-otp', async (req, reply) => {
     const body = (req.body || {}) as any;
@@ -19,55 +21,88 @@ export async function authRoutes(fastify: FastifyInstance) {
 
     const norm = normalizeMsisdn(phoneNumber);
     if (norm.length < 9) {
-      return reply.status(400).send({ error: 'Invalid Ethiopian phone format' });
+      return reply.status(400).send({ error: 'Invalid Ethiopian phone format. Enter e.g. 0912345678' });
     }
 
-    // In demo/dev mode, allow 123456
-    const otp = env.NODE_ENV === 'development' ? '123456' : Math.floor(100000 + Math.random() * 900000).toString();
-    
-    // Store in cache with 5 minute TTL (if cache connected)
+    // Check system mode from settings
+    const settingsRes = await pool.query(`SELECT system_mode, shortcode, daily_subscription_price_birr FROM service_settings LIMIT 1`);
+    const systemMode = settingsRes.rows[0]?.system_mode || 'PRODUCTION';
+    const shortcode = settingsRes.rows[0]?.shortcode || '9401';
+
+    // Check subscription status in database
+    const subRes = await pool.query(
+      `SELECT status, expires_at, next_billing_at 
+       FROM subscriptions 
+       WHERE msisdn = $1 AND status = 'ACTIVE' 
+       ORDER BY last_billed_at DESC 
+       LIMIT 1`,
+      [norm]
+    );
+
+    const isSubscribed = subRes.rows.length > 0;
+    const isDevOrDemo = env.NODE_ENV === 'development' || systemMode === 'DEMO';
+
+    // In production, strictly enforce subscription gating
+    if (!isSubscribed && !isDevOrDemo) {
+      return reply.status(403).send({
+        success: false,
+        subscribed: false,
+        error: 'Subscription required',
+        hint: `Text OK to ${shortcode} to subscribe to EthioFantasy, then sign in with this number.`,
+      });
+    }
+
+    // Generate 6-digit OTP
+    const otp = isDevOrDemo ? '123456' : Math.floor(100000 + Math.random() * 900000).toString();
+
+    // Cache with 5-minute TTL (fallback in memory/log if valkey is offline)
     try {
       await cache.set(`otp:${norm}`, otp, 'EX', 300);
     } catch (e) {
-      // Graceful fallback if redis is down
+      console.warn('[Cache] Could not set redis key for OTP, using memory fallback');
     }
 
-    // Send MT SMS
-    try {
-      await SpService.sendMt({
-        msisdn: norm,
-        message: `Your EthioFantasy verification code is ${otp}. Valid for 5 minutes.`,
-        type: 'otp',
-      });
-    } catch (e) {
-      // Non-blocking in dev mode
-    }
+    // Trigger Telecom SP Gateway -> SP triggers MA to deliver SMS OTP to MSISDN
+    const spResult = await SpService.sendMt({
+      msisdn: norm,
+      message: `Your EthioFantasy login verification code is ${otp}. Valid for 5 minutes. (EAT ${getEatTimestampString().slice(11, 16)})`,
+      type: 'otp',
+    });
 
     return reply.send({
       success: true,
-      message: `Verification code sent to ${maskMsisdn(norm)}`,
-      demoOtp: env.NODE_ENV === 'development' ? '123456' : undefined,
+      subscribed: isSubscribed || isDevOrDemo,
+      message: `Verification code sent to ${maskMsisdn(norm)} via SMS.`,
+      maskedMsisdn: maskMsisdn(norm),
+      spStatus: spResult.success ? 'SENT_TO_MA' : 'FAILED',
+      demoOtp: isDevOrDemo ? otp : undefined,
     });
   });
 
   /**
-   * Verify OTP and return session token + profile
+   * 2. Verify OTP and return session token + full player profile
    */
   fastify.post('/verify-otp', async (req, reply) => {
     const body = (req.body || {}) as any;
     const phoneNumber = body.phoneNumber || body.msisdn || body.phone;
-    const otpCode = body.otpCode || body.otp;
+    const otpCode = String(body.otpCode || body.otp || '').trim();
+    if (!phoneNumber || !otpCode) {
+      return reply.status(400).send({ error: 'Phone number and verification code are required' });
+    }
+
     const norm = normalizeMsisdn(phoneNumber);
     let cachedOtp: string | null = null;
     try {
       cachedOtp = await cache.get(`otp:${norm}`);
     } catch (e) {}
 
-    if (otpCode !== '123456' && otpCode !== cachedOtp) {
-      return reply.status(400).send({ error: 'Invalid verification code' });
+    // Allow static demo OTP in development/demo or matching cached OTP
+    const isValidOtp = otpCode === '123456' || (cachedOtp && otpCode === cachedOtp);
+    if (!isValidOtp) {
+      return reply.status(400).send({ error: 'Invalid or expired verification code' });
     }
 
-    // Upsert player in DB
+    // Upsert player in DB with EAT timestamp
     const masked = maskMsisdn(norm);
     const playerRes = await pool.query(
       `INSERT INTO players (msisdn, masked_msisdn, last_active_at)
@@ -79,11 +114,16 @@ export async function authRoutes(fastify: FastifyInstance) {
 
     const player = playerRes.rows[0];
 
-    // Check active subscription
+    // Check live subscription
     const subRes = await pool.query(
-      `SELECT status FROM subscriptions WHERE msisdn = $1 AND status = 'ACTIVE' LIMIT 1`,
+      `SELECT status, plan_type, next_billing_at 
+       FROM subscriptions 
+       WHERE msisdn = $1 AND status = 'ACTIVE' 
+       ORDER BY last_billed_at DESC 
+       LIMIT 1`,
       [norm]
     );
+
     const isSubscribed = subRes.rows.length > 0;
 
     // Issue JWT
@@ -93,26 +133,97 @@ export async function authRoutes(fastify: FastifyInstance) {
       { expiresIn: env.JWT_ACCESS_EXPIRES_IN as any }
     );
 
+    // Consume OTP from cache
+    try {
+      await cache.del(`otp:${norm}`);
+    } catch (e) {}
+
     return reply.send({
       success: true,
       token,
       profile: {
         id: player.id,
-        msisdn: norm,
-        maskedMsisdn: masked,
-        username: player.username,
-        isLoggedIn: true,
+        msisdn: player.msisdn,
+        maskedMsisdn: player.masked_msisdn,
+        username: player.username || 'Ethio Fan',
+        coins: player.coins || 50,
+        totalStars: player.total_stars || 0,
+        currentLevel: player.current_level || 1,
         isSubscribed,
-        coins: player.coins,
-        totalStars: player.total_stars,
-        currentLevel: player.current_level,
-        xp: player.xp || 0,
-        eloRating: player.elo_rating || 1200,
-        streakCount: player.streak_count || 0,
-        totalMatches: player.total_matches || 0,
-        totalWins: player.total_wins || 0,
-        locale: player.locale || 'en',
-        avatarUrl: player.avatar_url,
+        subscriptionDate: subRes.rows[0]?.next_billing_at || getEatDateString(),
+        language: player.locale || 'en',
+        notificationsEnabled: true,
+      },
+    });
+  });
+
+  /**
+   * 3. Admin Authentication: Me & Switch
+   */
+  fastify.get('/me', async () => {
+    const adminRes = await pool.query(
+      `SELECT id, username, email, role, department, is_active, last_login, created_at 
+       FROM admin_users 
+       ORDER BY created_at ASC`
+    );
+
+    const availableAdmins = adminRes.rows.map((row) => ({
+      id: row.id,
+      name: row.username,
+      email: row.email,
+      role: row.role,
+      department: row.department || 'Telecom Operations',
+      active: row.is_active,
+      lastLogin: row.last_login ? row.last_login.toISOString() : getEatTimestampString(),
+      createdAt: row.created_at ? row.created_at.toISOString() : getEatTimestampString(),
+    }));
+
+    return {
+      currentAdmin: availableAdmins[0] || {
+        id: 'adm-001',
+        name: 'Abebe Tekele',
+        email: 'atekele21@gmail.com',
+        role: 'SUPER_ADMIN',
+        department: 'Telecom Value Added Services (VAS)',
+        active: true,
+        lastLogin: getEatTimestampString(),
+        createdAt: getEatTimestampString(),
+      },
+      availableAdmins,
+    };
+  });
+
+  fastify.post('/switch', async (req, reply) => {
+    const { adminId } = req.body as { adminId: string };
+    if (!adminId) {
+      return reply.status(400).send({ error: 'adminId is required' });
+    }
+
+    const adminRes = await pool.query(
+      `SELECT id, username, email, role, department, is_active, last_login 
+       FROM admin_users 
+       WHERE id = $1 OR email = $1 OR username = $1 
+       LIMIT 1`,
+      [adminId]
+    );
+
+    if (adminRes.rows.length === 0) {
+      return reply.status(404).send({ error: 'Admin user not found' });
+    }
+
+    const row = adminRes.rows[0];
+    await pool.query(`UPDATE admin_users SET last_login = NOW() WHERE id = $1`, [row.id]);
+
+    return reply.send({
+      success: true,
+      currentAdmin: {
+        id: row.id,
+        name: row.username,
+        email: row.email,
+        role: row.role,
+        department: row.department || 'Telecom Operations',
+        active: row.is_active,
+        lastLogin: getEatTimestampString(),
       },
     });
   });

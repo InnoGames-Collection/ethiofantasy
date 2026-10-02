@@ -1,6 +1,6 @@
 {
-  "name": "EthioFantasy",
-  "description": "Official EthioFantasy mobile gaming portal featuring 100-level football trivia, daily challenges, weekly tournaments, and instant rewards.",
+  "name": "Football Quiz - Trivia & Player Challenge",
+  "description": "The ultimate football trivia quiz game. Test your football knowledge, guess players, clubs, rules, and world football history across challenging levels.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

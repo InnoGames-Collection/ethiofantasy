@@ -98,6 +98,7 @@ services:
     environment:
       NODE_ENV: production
       PORT: 3403
+      API_URL: http://api:3402
     ports:
       - "127.0.0.1:3403:3403"
     deploy:
@@ -124,6 +125,7 @@ services:
     environment:
       NODE_ENV: production
       PORT: 3400
+      API_URL: http://api:3402
     ports:
       - "127.0.0.1:3400:3400"
     deploy:

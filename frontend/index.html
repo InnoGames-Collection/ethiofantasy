@@ -1,38 +1,21 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-    <meta name="description" content="EthioFantasy — Commercial Football Quiz League platform on Ethio Telecom Shortcode 9401." />
-    <meta name="theme-color" content="#0F172A" />
-    <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <title>EthioFantasy — Football Quiz League | Ethio Telecom</title>
+    <title>Football Quiz - Trivia & Player Challenge</title>
+    <meta name="description" content="The ultimate football trivia quiz game. Test your football knowledge, guess players, clubs, rules, and world football history across challenging levels." />
+    <meta property="og:title" content="Football Quiz - Trivia & Player Challenge" />
+    <meta property="og:description" content="The ultimate football trivia quiz game. Test your football knowledge, guess players, clubs, rules, and world football history across challenging levels." />
+    <meta property="og:type" content="website" />
+    <meta name="twitter:card" content="summary_large_image" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&family=Teko:wght@600;700&display=swap" rel="stylesheet" />
-    <style>
-      html, body {
-        overflow: hidden;
-        width: 100%;
-        height: 100%;
-        margin: 0;
-        padding: 0;
-        background-color: #0a0f1e;
-      }
-      #renderCanvas {
-        position: absolute;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        touch-action: none;
-        z-index: 0;
-      }
-    </style>
   </head>
-  <body class="studio-background">
-    <!-- UI Root will be dynamically injected by UIManager.ts -->
-    <script type="module" src="/src/main.ts"></script>
+  <body class="bg-white text-slate-800 select-none antialiased overflow-x-hidden">
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
+

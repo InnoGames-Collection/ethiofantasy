@@ -127,18 +127,43 @@ export interface DailyChallengeParticipant {
   submittedAt: string;
 }
 
+export type QuestionDifficulty = 'EASY' | 'MEDIUM' | 'HARD' | 'EXPERT';
+export type QuestionPool = 'LEVEL_BASED' | 'DAILY_CHALLENGE';
+export type QuestionStatus = 'DRAFT' | 'NEEDS_REVIEW' | 'PUBLISHED' | 'INACTIVE';
+
+export interface QuestionImage {
+  id: string;
+  url: string;
+  thumbnailUrl?: string;
+  title: string;
+  altText: string;
+  category: 'STADIUMS' | 'PLAYERS' | 'TROPHIES' | 'MATCHES' | 'ETHIOPIAN' | 'GENERAL';
+  dimensions?: string;
+  fileSize?: string;
+  usageCount: number;
+  tags: string[];
+  credit?: string;
+  uploadedAt: string;
+}
+
 export interface QuizQuestion {
   id: string;
-  levelNumber: number;
-  orderNumber: number;
+  questionCode?: string;
+  levelNumber?: number;
+  orderNumber?: number;
   questionText: string;
   questionAmharic?: string;
   options: string[];
   correctOptionIndex: number;
-  difficulty: 'EASY' | 'MEDIUM' | 'HARD';
-  category: 'ETHIOPIAN_PREMIER_LEAGUE' | 'WALIA_IBEX' | 'AFRICAN_FOOTBALL' | 'WORLD_CUP' | 'EUROPEAN_LEAGUES';
-  status: 'DRAFT' | 'PUBLISHED' | 'INACTIVE';
+  difficulty: QuestionDifficulty | string;
+  category: string;
+  status: QuestionStatus | string;
   explanation?: string;
+  pool?: QuestionPool;
+  imageUrl?: string;
+  imageAlt?: string;
+  sourceReference?: string;
+  createdAt?: string;
   updatedAt: string;
   updatedBy: string;
 }

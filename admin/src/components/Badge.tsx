@@ -14,6 +14,8 @@ export const Badge: React.FC<BadgeProps> = ({ status, size = 'sm' }) => {
     colorClasses = 'bg-emerald-50 text-emerald-700 border-emerald-200';
   } else if (['PAUSED', 'PENDING', 'PENDING_APPROVAL', 'DRAFT'].includes(norm)) {
     colorClasses = 'bg-amber-50 text-amber-700 border-amber-200';
+  } else if (['REVIEW', 'NEEDS_REVIEW', 'NEEDS REVIEW'].includes(norm)) {
+    colorClasses = 'bg-purple-50 text-purple-700 border-purple-200';
   } else if (['CLOSED', 'FINALIZED'].includes(norm)) {
     colorClasses = 'bg-blue-50 text-blue-800 border-blue-200';
   } else if (['SUSPENDED', 'DEACTIVATED', 'DISQUALIFIED', 'CANCELLED', 'INACTIVE'].includes(norm)) {

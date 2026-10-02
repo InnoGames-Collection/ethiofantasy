@@ -1,0 +1,177 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 660" width="100%" height="100%">
+  <defs>
+    <!-- Dynamic green wing gradient -->
+    <linearGradient id="wingGreenGrad" x1="0%" y1="0%" x2="100%" y2="80%">
+      <stop offset="0%" stop-color="#49c628" />
+      <stop offset="50%" stop-color="#239e1e" />
+      <stop offset="100%" stop-color="#0e7314" />
+    </linearGradient>
+
+    <!-- Speed streaks blue gradient -->
+    <linearGradient id="streakBlueGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#168bf8" />
+      <stop offset="100%" stop-color="#025cb8" />
+    </linearGradient>
+
+    <!-- Soccer ball sphere radial gradient -->
+    <radialGradient id="ballSphereGrad" cx="38%" cy="32%" r="68%">
+      <stop offset="0%" stop-color="#ffffff" />
+      <stop offset="65%" stop-color="#edf2f7" />
+      <stop offset="100%" stop-color="#b4c3d4" />
+    </radialGradient>
+
+    <!-- Soccer ball deep navy patch gradient -->
+    <linearGradient id="patchNavyGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#17488a" />
+      <stop offset="60%" stop-color="#0d2b56" />
+      <stop offset="100%" stop-color="#071731" />
+    </linearGradient>
+
+    <!-- Ethio blue gradient -->
+    <linearGradient id="ethioBlue" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#0d4c92" />
+      <stop offset="100%" stop-color="#022d64" />
+    </linearGradient>
+
+    <!-- Fantasy green gradient -->
+    <linearGradient id="fantasyGreen" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#24a822" />
+      <stop offset="100%" stop-color="#0e7914" />
+    </linearGradient>
+
+    <!-- Star drop shadow -->
+    <filter id="glowShadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="4" stdDeviation="6" flood-color="#000000" flood-opacity="0.18" />
+    </filter>
+  </defs>
+
+  <!-- ========================================== -->
+  <!-- 1. CREST / SPEED EMBLEM: 'E' WING + SOCCER BALL -->
+  <!-- ========================================== -->
+  <g id="Emblem" transform="translate(0, 0)">
+    <!-- Speed streaks on bottom left (Blue) -->
+    <!-- Streak 1 (Lowest) -->
+    <path d="M 270 358 L 380 326 C 362 338 335 348 300 354 Z" fill="url(#streakBlueGrad)" />
+    <!-- Streak 2 (Middle) -->
+    <path d="M 238 334 L 382 284 C 362 300 324 316 276 328 Z" fill="url(#streakBlueGrad)" />
+    <!-- Streak 3 (Top blue) -->
+    <path d="M 284 278 L 396 238 C 378 258 340 274 312 280 Z" fill="url(#streakBlueGrad)" />
+
+    <!-- Light green accent speed swoop above blue -->
+    <path d="M 284 246 C 340 200 410 162 485 142 L 472 158 C 410 178 350 216 308 252 Z" fill="#60d832" />
+
+    <!-- Main Stylized 'E' Wing Shapes (Green) -->
+    <!-- Top arching wing extending right toward star -->
+    <path d="M 405 235 C 382 170 435 98 545 98 L 685 98 C 655 125 615 152 548 152 C 485 152 448 185 435 224 Z" fill="url(#wingGreenGrad)" />
+    
+    <!-- Middle horizontal wing bar of 'E' -->
+    <path d="M 570 174 L 696 174 C 674 198 642 220 588 220 L 565 220 Z" fill="url(#wingGreenGrad)" />
+
+    <!-- Bottom large swooping bowl of 'E' embracing the soccer ball -->
+    <path d="M 425 210 C 375 250 375 352 475 372 C 570 390 672 328 668 254 L 612 254 C 614 295 555 330 495 320 C 438 310 422 252 442 218 Z" fill="url(#wingGreenGrad)" />
+
+    <!-- Dynamic 5-Pointed Green Star on top right of the wing -->
+    <polygon points="730,65 744,98 780,102 752,126 760,162 730,142 700,162 708,126 680,102 716,98" fill="#32b31f" filter="url(#glowShadow)" />
+
+    <!-- ========================================== -->
+    <!-- SOCCER BALL WITH NAVY & WHITE 3D PATCHES -->
+    <!-- ========================================== -->
+    <g id="SoccerBall" transform="translate(500, 245)">
+      <!-- Ball sphere background -->
+      <circle cx="0" cy="0" r="88" fill="url(#ballSphereGrad)" stroke="#1a3b68" stroke-width="3.5" />
+
+      <!-- Shadow & ambient depth rim -->
+      <circle cx="0" cy="0" r="87" fill="none" stroke="#0b1b36" stroke-width="2" opacity="0.4" />
+
+      <!-- Center Hexagon / Pentagonal navy patch -->
+      <polygon points="3,-22 24,-5 16,22 -14,22 -22,-5" fill="url(#patchNavyGrad)" stroke="#ffffff" stroke-width="4.5" stroke-linejoin="round" />
+
+      <!-- Radiating connecting seam lines -->
+      <line x1="3" y1="-22" x2="6" y2="-52" stroke="#1d4072" stroke-width="3.5" />
+      <line x1="24" y1="-5" x2="52" y2="-12" stroke="#1d4072" stroke-width="3.5" />
+      <line x1="16" y1="22" x2="38" y2="48" stroke="#1d4072" stroke-width="3.5" />
+      <line x1="-14" y1="22" x2="-35" y2="48" stroke="#1d4072" stroke-width="3.5" />
+      <line x1="-22" y1="-5" x2="-52" y2="-12" stroke="#1d4072" stroke-width="3.5" />
+
+      <!-- Surrounding Navy Patches (Spherical perspective) -->
+      <!-- Top patch -->
+      <path d="M 6 -52 L -18 -72 C -3 -82 18 -82 32 -72 L 22 -52 Z" fill="url(#patchNavyGrad)" stroke="#ffffff" stroke-width="3.5" />
+      <!-- Top-right patch -->
+      <path d="M 52 -12 L 78 -28 C 84 -12 84 8 76 25 L 50 18 Z" fill="url(#patchNavyGrad)" stroke="#ffffff" stroke-width="3.5" />
+      <!-- Bottom-right patch -->
+      <path d="M 38 48 L 56 68 C 42 78 22 84 4 84 L 14 62 Z" fill="url(#patchNavyGrad)" stroke="#ffffff" stroke-width="3.5" />
+      <!-- Bottom-left patch -->
+      <path d="M -35 48 L -14 62 L -6 84 C -28 84 -48 76 -60 62 L -48 42 Z" fill="url(#patchNavyGrad)" stroke="#ffffff" stroke-width="3.5" />
+      <!-- Top-left patch -->
+      <path d="M -52 -12 L -50 18 L -76 25 C -84 10 -84 -10 -76 -28 Z" fill="url(#patchNavyGrad)" stroke="#ffffff" stroke-width="3.5" />
+
+      <!-- Ball specular shine reflection (Top-Left 3D Highlight) -->
+      <ellipse cx="-28" cy="-35" rx="36" ry="22" fill="#ffffff" opacity="0.45" transform="rotate(-30, -28, -35)" />
+    </g>
+  </g>
+
+  <!-- ========================================== -->
+  <!-- 2. "ETHIOFANTASY" TYPOGRAPHY               -->
+  <!-- ========================================== -->
+  <g id="Wordmark" transform="translate(500, 480)">
+    <!-- ETHI (Deep Blue) -->
+    <text
+      x="-390"
+      y="0"
+      font-family="'Plus Jakarta Sans', 'Arial Black', Impact, sans-serif"
+      font-weight="900"
+      font-size="88"
+      letter-spacing="-1"
+      fill="url(#ethioBlue)"
+    >
+      ETHI
+    </text>
+
+    <!-- O (Round with Mini Soccer Ball inside) -->
+    <!-- Positioned around x = -115 -->
+    <g transform="translate(-115, -28)">
+      <!-- Navy O ring -->
+      <circle cx="0" cy="0" r="42" fill="url(#ethioBlue)" />
+      <circle cx="0" cy="0" r="26" fill="#ffffff" />
+      <!-- Inner ball emblem -->
+      <circle cx="0" cy="0" r="22" fill="#e8edf2" />
+      <polygon points="0,-6 6,-2 4,6 -4,6 -6,-2" fill="#0c3262" />
+      <polygon points="0,-18 -4,-21 4,-21" fill="#0c3262" />
+      <polygon points="17,-7 21,-3 19,3" fill="#0c3262" />
+      <polygon points="12,14 15,19 8,20" fill="#0c3262" />
+      <polygon points="-12,14 -8,20 -15,19" fill="#0c3262" />
+      <polygon points="-17,-7 -19,3 -21,-3" fill="#0c3262" />
+    </g>
+
+    <!-- FANTASY (Vibrant Green) -->
+    <text
+      x="-62"
+      y="0"
+      font-family="'Plus Jakarta Sans', 'Arial Black', Impact, sans-serif"
+      font-weight="900"
+      font-size="88"
+      letter-spacing="-1"
+      fill="url(#fantasyGreen)"
+    >
+      FANTASY
+    </text>
+  </g>
+
+  <!-- ========================================== -->
+  <!-- 3. SLOGAN: "PLAY • COMPETE • WIN"         -->
+  <!-- ========================================== -->
+  <g id="Tagline" transform="translate(500, 535)">
+    <text
+      x="0"
+      y="0"
+      font-family="'Plus Jakarta Sans', Arial, sans-serif"
+      font-weight="800"
+      font-size="28"
+      letter-spacing="14"
+      fill="#0c3262"
+      text-anchor="middle"
+    >
+      PLAY  <tspan fill="#32b31f">•</tspan>  COMPETE  <tspan fill="#32b31f">•</tspan>  WIN
+    </text>
+  </g>
+</svg>
