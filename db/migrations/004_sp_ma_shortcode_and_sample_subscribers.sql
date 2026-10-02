@@ -38,21 +38,22 @@ SET default_otp = EXCLUDED.default_otp,
     plan_type = EXCLUDED.plan_type;
 
 -- 3. Ensure all sample subscribers exist in players table
-INSERT INTO players (msisdn, masked_msisdn, name, telecom_circle, is_subscribed, subscription_tier, last_active_at)
+INSERT INTO players (msisdn, masked_msisdn, username, telecom_circle, last_active_at)
 VALUES
-    ('251911000000', '251*****000', 'Test Subscriber 1', 'Addis Ababa Zone 1', TRUE, 'VIP', NOW()),
-    ('251911000001', '251*****001', 'Yared Tesfaye', 'Addis Ababa Central', TRUE, 'Gold', NOW()),
-    ('251911000002', '251*****002', 'Abebe Bikila', 'Oromia North', TRUE, 'Silver', NOW()),
-    ('251965112122', '251*****122', 'EthioFantasy Demo Player', 'Addis Ababa Central', TRUE, 'VIP', NOW()),
-    ('251900112233', '251*****233', 'Kenenisa Bekele', 'Oromia South', TRUE, 'Bronze', NOW()),
-    ('251912345678', '251*****678', 'Haile Gebrselassie', 'Sidama Region', TRUE, 'Gold', NOW()),
-    ('251977889900', '251*****900', 'Derartu Tulu', 'Arsi Zone', TRUE, 'VIP', NOW())
+    ('251911000000', '251*****000', 'Test Subscriber 1', 'Addis Ababa Zone 1', NOW()),
+    ('251911000001', '251*****001', 'Yared Tesfaye', 'Addis Ababa Central', NOW()),
+    ('251911000002', '251*****002', 'Abebe Bikila', 'Oromia North', NOW()),
+    ('251965112122', '251*****122', 'EthioFantasy Demo Player', 'Addis Ababa Central', NOW()),
+    ('251900112233', '251*****233', 'Kenenisa Bekele', 'Oromia South', NOW()),
+    ('251912345678', '251*****678', 'Haile Gebrselassie', 'Sidama Region', NOW()),
+    ('251977889900', '251*****900', 'Derartu Tulu', 'Arsi Zone', NOW())
 ON CONFLICT (msisdn) DO UPDATE
-SET is_subscribed = TRUE,
-    telecom_circle = EXCLUDED.telecom_circle,
-    subscription_tier = EXCLUDED.subscription_tier;
+SET telecom_circle = EXCLUDED.telecom_circle,
+    last_active_at = EXCLUDED.last_active_at;
 
--- 4. Seed active subscription records for sample subscribers
+-- 4. Create unique constraint and seed active subscriptions for sample subscribers
+CREATE UNIQUE INDEX IF NOT EXISTS idx_subs_msisdn_unique ON subscriptions(msisdn);
+
 INSERT INTO subscriptions (msisdn, shortcode, service_id, status, plan_type, auto_renew, renew_count, last_billed_at, next_billing_at, created_at, updated_at)
 VALUES
     ('251911000000', '6415', '4', 'ACTIVE', 'daily', TRUE, 42, NOW(), NOW() + INTERVAL '1 day', NOW() - INTERVAL '42 days', NOW()),
