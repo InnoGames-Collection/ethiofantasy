@@ -41,7 +41,7 @@ export async function authRoutes(fastify: FastifyInstance) {
 
     // 2. Check live subscription status in database
     const subRes = await pool.query(
-      `SELECT status, expires_at, next_billing_at 
+      `SELECT status, next_billing_at 
        FROM subscriptions 
        WHERE msisdn = $1 AND status = 'ACTIVE' 
        ORDER BY last_billed_at DESC 
