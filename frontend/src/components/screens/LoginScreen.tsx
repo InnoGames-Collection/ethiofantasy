@@ -101,7 +101,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
 
       setCountdown(60);
       const demoHint = data.demoOtp ? ` (Demo OTP: ${data.demoOtp})` : '';
-      setInfoMsg(`SMS sent to ${maskMsisdn(phoneNumber)} via 900.${demoHint}`);
+      setInfoMsg(`SMS sent to ${maskMsisdn(phoneNumber)} via 6415.${demoHint}`);
       sound.playWhistle();
     } catch {
       // Offline / network fallback with PO simulated code
@@ -163,8 +163,8 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
   // Step 10 & 11: Subscribe button opens device SMS composer
   const handleSubscribeClick = () => {
     sound.playTap();
-    // Open native SMS composer: recipient 900, body OK
-    const opened = openSmsSubscriptionComposer('900', 'OK');
+    // Open native SMS composer: recipient 6415, body OK
+    const opened = openSmsSubscriptionComposer('6415', 'OK');
     if (!opened) {
       setActiveModal('SMS_INSTRUCTIONS');
     }
