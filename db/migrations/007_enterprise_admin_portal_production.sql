@@ -53,17 +53,19 @@ ALTER TABLE admin_users
 -- Update seed passwords to known secure hash for 'EthioAdmin@2026!'
 UPDATE admin_users
 SET password_hash = '$2b$10$wpZBYUqhCdEIgu40LpWzb.ydsJurr2sd5PftmNmBL7.e/rzwBdh2a'
-WHERE email IN ('atekele21@gmail.com', 'selam.desta@ethiofantasy.et', 'yonas.k@ethiofantasy.et')
+WHERE email IN ('atekele21@gmail.com', 'admin@ethiofantasy.innopulseplatform.com', 'selam.desta@ethiofantasy.et', 'yonas.k@ethiofantasy.et')
    OR id = 'a0000000-0000-0000-0000-000000000001';
 
--- Insert default admin users if table is empty
+-- Insert default admin users or update existing by id
 INSERT INTO admin_users (id, username, email, password_hash, role, department, is_active)
 VALUES 
     ('a0000000-0000-0000-0000-000000000001', 'Abebe Tekele', 'atekele21@gmail.com', '$2b$10$wpZBYUqhCdEIgu40LpWzb.ydsJurr2sd5PftmNmBL7.e/rzwBdh2a', 'SUPER_ADMIN', 'Telecom Value Added Services (VAS)', TRUE),
     ('a0000000-0000-0000-0000-000000000002', 'Selamawit Desta', 'selam.desta@ethiofantasy.et', '$2b$10$wpZBYUqhCdEIgu40LpWzb.ydsJurr2sd5PftmNmBL7.e/rzwBdh2a', 'OPERATIONS_ADMIN', 'Game Operations & Competitions', TRUE),
     ('a0000000-0000-0000-0000-000000000003', 'Yonas Kebede', 'yonas.k@ethiofantasy.et', '$2b$10$wpZBYUqhCdEIgu40LpWzb.ydsJurr2sd5PftmNmBL7.e/rzwBdh2a', 'REPORTING_ADMIN', 'Revenue Assurance & Telecom Audit', TRUE)
-ON CONFLICT (email) DO UPDATE 
-SET password_hash = EXCLUDED.password_hash,
+ON CONFLICT (id) DO UPDATE 
+SET username = EXCLUDED.username,
+    email = EXCLUDED.email,
+    password_hash = EXCLUDED.password_hash,
     role = EXCLUDED.role,
     department = EXCLUDED.department,
     is_active = EXCLUDED.is_active;
