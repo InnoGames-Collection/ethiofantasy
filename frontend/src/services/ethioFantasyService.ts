@@ -371,8 +371,45 @@ export function recordDailyChallengeScore(
 }
 
 /**
- * Get 7-Day Competition Leaderboard
+ * Fetch 7-Day Competition Leaderboard from Authoritative Fastify API Gateway
  * Masked MSISDN ONLY. 5-Tier Deterministic Tie-Breaker.
+ */
+export async function fetchTop10Leaderboard(
+  currentUserMsisdn: string
+): Promise<{ top10: EthioLeaderboardEntry[]; userPosition: EthioLeaderboardEntry | null }> {
+  try {
+    const res = await fetch(`/api/leaderboard?msisdn=${encodeURIComponent(currentUserMsisdn)}`);
+    if (res.ok) {
+      const data = await res.json();
+      if (data && Array.isArray(data.top10)) {
+        return {
+          top10: data.top10.map((entry: any) => ({
+            rank: entry.rank,
+            maskedMsisdn: entry.maskedMsisdn,
+            score: entry.sevenDayScore ?? entry.score,
+            totalResponseTime: entry.totalResponseTime,
+            participationDays: entry.participationDays,
+            isCurrentUser: Boolean(entry.isCurrentUser),
+          })),
+          userPosition: data.currentUserPosition ? {
+            rank: data.currentUserPosition.rank,
+            maskedMsisdn: data.currentUserPosition.maskedMsisdn,
+            score: data.currentUserPosition.sevenDayScore ?? data.currentUserPosition.score,
+            totalResponseTime: data.currentUserPosition.totalResponseTime,
+            participationDays: data.currentUserPosition.participationDays,
+            isCurrentUser: true,
+          } : null,
+        };
+      }
+    }
+  } catch (err) {
+    console.warn('[Leaderboard fetch failed, falling back to local]', err);
+  }
+  return getAuthoritativeTop10Leaderboard(currentUserMsisdn);
+}
+
+/**
+ * Synchronous local resolver fallback for 7-Day Competition Leaderboard
  */
 export function getTop10Leaderboard(
   currentUserMsisdn: string,

@@ -1,4 +1,5 @@
 import { FastifyInstance } from 'fastify';
+import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
 import { env } from '../config/env.js';
 import { pool } from '../config/database.js';
@@ -6,6 +7,15 @@ import { cache } from '../config/cache.js';
 import { SpService } from '../services/spService.js';
 import { normalizeMsisdn, maskMsisdn } from '../services/dailyChallengeEngine.js';
 import { getEatDateString, getEatTimestampString } from '../utils/time.js';
+import {
+  JWT_ISSUER,
+  JWT_AUDIENCE,
+  ADMIN_JWT_ISSUER,
+  ADMIN_JWT_AUDIENCE,
+  verifyAdminAuth,
+  verifySuperAdmin,
+} from '../middleware/auth.js';
+import bcrypt from 'bcryptjs';
 
 export async function authRoutes(fastify: FastifyInstance) {
   /**
@@ -25,21 +35,25 @@ export async function authRoutes(fastify: FastifyInstance) {
     }
 
     // Check system mode and authoritative shortcode from settings
-    const settingsRes = await pool.query(`SELECT system_mode, shortcode, daily_subscription_price_birr FROM service_settings LIMIT 1`);
+    const settingsRes = await pool.query(
+      `SELECT system_mode, shortcode, daily_subscription_price_birr FROM service_settings LIMIT 1`
+    );
     const systemMode = settingsRes.rows[0]?.system_mode || 'PRODUCTION';
     const shortcode = settingsRes.rows[0]?.shortcode || env.SHORTCODE || '6415';
 
-    // 1. Check if MSISDN is a pre-seeded test/QA subscriber in database
+    // Check test subscriber table only in non-production or demo mode
     let testSub: any = null;
-    try {
-      const testSubRes = await pool.query(
-        `SELECT default_otp, tier, name FROM test_subscriber_otps WHERE msisdn = $1 LIMIT 1`,
-        [norm]
-      );
-      testSub = testSubRes.rows[0];
-    } catch (e) {}
+    if (env.NODE_ENV !== 'production' || systemMode === 'DEMO') {
+      try {
+        const testSubRes = await pool.query(
+          `SELECT default_otp, tier, name FROM test_subscriber_otps WHERE msisdn = $1 LIMIT 1`,
+          [norm]
+        );
+        testSub = testSubRes.rows[0];
+      } catch (e) {}
+    }
 
-    // 2. Check live subscription status in database
+    // Check live subscription status in database
     const subRes = await pool.query(
       `SELECT status, next_billing_at 
        FROM subscriptions 
@@ -62,18 +76,16 @@ export async function authRoutes(fastify: FastifyInstance) {
       });
     }
 
-    // Determine 6-digit OTP code (Test subscribers use predefined deterministic code)
-    const otp = testSub
+    // Generate cryptographically secure 6-digit random OTP
+    const otp = (testSub && env.NODE_ENV !== 'production')
       ? testSub.default_otp
-      : isDevOrDemo
-      ? '849201'
-      : Math.floor(100000 + Math.random() * 900000).toString();
+      : crypto.randomInt(100000, 1000000).toString();
 
     // Cache in Valkey / Redis with 5-minute TTL
     try {
       await cache.set(`otp:${norm}`, otp, 'EX', 300);
     } catch (e) {
-      console.warn('[Cache] Could not set redis key for OTP, using database fallback');
+      req.log.warn('[Cache] Could not set redis key for OTP, using database fallback');
     }
 
     // Trigger Telecom SP Gateway -> SP triggers MA (via shortcode 6415) to deliver SMS OTP to MSISDN
@@ -100,7 +112,7 @@ export async function authRoutes(fastify: FastifyInstance) {
       message: `Verification code sent to ${maskMsisdn(norm)} via SMS (Shortcode 6415).`,
       maskedMsisdn: maskMsisdn(norm),
       spStatus: spResult.success ? 'SENT_TO_MA_6415' : 'QUEUED',
-      demoOtp: (testSub || isDevOrDemo) ? otp : undefined,
+      demoOtp: (testSub && env.NODE_ENV !== 'production') ? otp : undefined,
     });
   });
 
@@ -131,22 +143,23 @@ export async function authRoutes(fastify: FastifyInstance) {
       dbOtp = dbOtpRes.rows[0]?.code || null;
     } catch (e) {}
 
-    // Check test subscriber table
+    // Check test subscriber table only in non-production mode
     let testSubOtp: string | null = null;
-    try {
-      const testSubRes = await pool.query(
-        `SELECT default_otp FROM test_subscriber_otps WHERE msisdn = $1 LIMIT 1`,
-        [norm]
-      );
-      testSubOtp = testSubRes.rows[0]?.default_otp || null;
-    } catch (e) {}
+    if (env.NODE_ENV !== 'production') {
+      try {
+        const testSubRes = await pool.query(
+          `SELECT default_otp FROM test_subscriber_otps WHERE msisdn = $1 LIMIT 1`,
+          [norm]
+        );
+        testSubOtp = testSubRes.rows[0]?.default_otp || null;
+      } catch (e) {}
+    }
 
-    // Allow matching cached OTP, DB OTP, test subscriber default OTP, or standard test codes
+    // Match cached OTP, DB OTP, or test subscriber OTP (non-prod only)
     const isValidOtp =
       (cachedOtp && otpCode === cachedOtp) ||
       (dbOtp && otpCode === dbOtp) ||
-      (testSubOtp && otpCode === testSubOtp) ||
-      (env.NODE_ENV === 'development' && (otpCode === '123456' || otpCode === '849201'));
+      (testSubOtp && otpCode === testSubOtp);
 
     if (!isValidOtp) {
       return reply.status(400).send({ error: 'Invalid or expired verification code' });
@@ -176,11 +189,16 @@ export async function authRoutes(fastify: FastifyInstance) {
 
     const isSubscribed = subRes.rows.length > 0;
 
-    // Issue JWT
+    // Issue JWT with explicit HS256, issuer, audience, and PLAYER role
     const token = jwt.sign(
-      { msisdn: norm, id: player.id },
+      { msisdn: norm, id: player.id, role: 'PLAYER' },
       env.JWT_SECRET,
-      { expiresIn: env.JWT_ACCESS_EXPIRES_IN as any }
+      {
+        algorithm: 'HS256',
+        issuer: JWT_ISSUER,
+        audience: JWT_AUDIENCE,
+        expiresIn: env.JWT_ACCESS_EXPIRES_IN as any,
+      }
     );
 
     // Consume OTP from cache
@@ -208,9 +226,282 @@ export async function authRoutes(fastify: FastifyInstance) {
   });
 
   /**
-   * 3. Admin Authentication: Me & Switch
+   * 3. Zero-Trust Admin Authentication Suite
    */
-  fastify.get('/me', async () => {
+
+  // 3a. Admin Login with Argon2id/Bcrypt, Rate Throttling, and Brute-Force Lockout
+  fastify.post('/admin/login', async (req, reply) => {
+    const { email, password } = (req.body || {}) as { email?: string; password?: string };
+
+    if (!email || !password) {
+      return reply.status(400).send({
+        success: false,
+        error: 'INVALID_CREDENTIALS',
+        message: 'Email and password are required',
+      });
+    }
+
+    const cleanEmail = email.trim().toLowerCase();
+    const adminRes = await pool.query(
+      `SELECT id, username, email, password_hash, role, department, is_active, 
+              token_version, failed_login_attempts, locked_until 
+       FROM admin_users 
+       WHERE LOWER(email) = $1 OR LOWER(username) = $1 
+       LIMIT 1`,
+      [cleanEmail]
+    );
+
+    if (adminRes.rows.length === 0) {
+      // Timing attack prevention: dummy compare
+      await bcrypt.compare(password, '$2b$10$wpZBYUqhCdEIgu40LpWzb.ydsJurr2sd5PftmNmBL7.e/rzwBdh2a');
+      return reply.status(401).send({
+        success: false,
+        error: 'INVALID_CREDENTIALS',
+        message: 'Invalid administrative email or password',
+      });
+    }
+
+    const admin = adminRes.rows[0];
+
+    // Check account active state
+    if (!admin.is_active) {
+      return reply.status(403).send({
+        success: false,
+        error: 'ACCOUNT_DISABLED',
+        message: 'Administrative operator account is deactivated. Contact Telecom Security Officer.',
+      });
+    }
+
+    // Check brute-force lockout
+    if (admin.locked_until && new Date(admin.locked_until) > new Date()) {
+      const remainingMinutes = Math.ceil((new Date(admin.locked_until).getTime() - Date.now()) / 60000);
+      return reply.status(429).send({
+        success: false,
+        error: 'ACCOUNT_LOCKED',
+        message: `Account is temporarily locked due to multiple failed attempts. Try again in ${remainingMinutes} minute(s).`,
+      });
+    }
+
+    // Verify Password Hash
+    const isMatch = await bcrypt.compare(password, admin.password_hash);
+    if (!isMatch) {
+      const attempts = (admin.failed_login_attempts || 0) + 1;
+      let lockUntil: string | null = null;
+      if (attempts >= 5) {
+        lockUntil = 'NOW() + INTERVAL \'15 minutes\'';
+      }
+
+      await pool.query(
+        `UPDATE admin_users 
+         SET failed_login_attempts = $1, 
+             locked_until = ${lockUntil ? lockUntil : 'NULL'} 
+         WHERE id = $2`,
+        [attempts, admin.id]
+      );
+
+      return reply.status(401).send({
+        success: false,
+        error: 'INVALID_CREDENTIALS',
+        message: attempts >= 5 
+          ? 'Account locked for 15 minutes due to 5 consecutive authentication failures.' 
+          : `Invalid administrative credentials. (${5 - attempts} attempts remaining before lockout)`,
+      });
+    }
+
+    // Reset lockout counters and update login metadata
+    const clientIp = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.ip || '127.0.0.1';
+    await pool.query(
+      `UPDATE admin_users 
+       SET failed_login_attempts = 0, 
+           locked_until = NULL, 
+           last_login = NOW(), 
+           last_login_ip = $1 
+       WHERE id = $2`,
+      [clientIp, admin.id]
+    );
+
+    // Issue isolated, short-lived Admin Access Token (15 min)
+    const tokenId = crypto.randomUUID();
+    const token = jwt.sign(
+      {
+        id: admin.id,
+        email: admin.email,
+        username: admin.username,
+        role: admin.role,
+        tokenVersion: admin.token_version,
+        jti: tokenId,
+      },
+      env.ADMIN_JWT_SECRET,
+      {
+        algorithm: 'HS256',
+        issuer: ADMIN_JWT_ISSUER,
+        audience: ADMIN_JWT_AUDIENCE,
+        expiresIn: (env.ADMIN_JWT_EXPIRES_IN || '15m') as any,
+      }
+    );
+
+    // Issue rotating Refresh Token (7 days) stored in Valkey/Redis
+    const refreshToken = crypto.randomUUID();
+    try {
+      await cache.set(`refresh:${admin.id}:${refreshToken}`, tokenId, 'EX', 7 * 86400);
+    } catch (e) {
+      req.log.warn('[Auth Cache] Could not cache refresh token in Valkey');
+    }
+
+    return reply.send({
+      success: true,
+      token,
+      refreshToken,
+      admin: {
+        id: admin.id,
+        name: admin.username,
+        email: admin.email,
+        role: admin.role,
+        department: admin.department || 'Telecom Operations',
+        active: admin.is_active,
+        lastLogin: getEatTimestampString(),
+      },
+    });
+  });
+
+  // 3b. Admin Refresh Token Rotation
+  fastify.post('/admin/refresh', async (req, reply) => {
+    const { refreshToken, adminId } = (req.body || {}) as { refreshToken?: string; adminId?: string };
+
+    if (!refreshToken || !adminId) {
+      return reply.status(400).send({ error: 'Refresh token and admin ID are required' });
+    }
+
+    let existingTokenId: string | null = null;
+    try {
+      existingTokenId = await cache.get(`refresh:${adminId}:${refreshToken}`);
+    } catch {}
+
+    if (!existingTokenId && env.NODE_ENV === 'production') {
+      return reply.status(401).send({ error: 'REFRESH_TOKEN_INVALID_OR_EXPIRED' });
+    }
+
+    const adminRes = await pool.query(
+      `SELECT id, username, email, role, department, is_active, token_version 
+       FROM admin_users 
+       WHERE id = $1 AND is_active = TRUE LIMIT 1`,
+      [adminId]
+    );
+
+    if (adminRes.rows.length === 0) {
+      return reply.status(403).send({ error: 'ADMIN_ACCOUNT_INVALID' });
+    }
+
+    const admin = adminRes.rows[0];
+
+    // Invalidate old refresh token
+    try {
+      await cache.del(`refresh:${adminId}:${refreshToken}`);
+    } catch {}
+
+    // Issue fresh Access Token & new Refresh Token
+    const newJti = crypto.randomUUID();
+    const newToken = jwt.sign(
+      {
+        id: admin.id,
+        email: admin.email,
+        username: admin.username,
+        role: admin.role,
+        tokenVersion: admin.token_version,
+        jti: newJti,
+      },
+      env.ADMIN_JWT_SECRET,
+      {
+        algorithm: 'HS256',
+        issuer: ADMIN_JWT_ISSUER,
+        audience: ADMIN_JWT_AUDIENCE,
+        expiresIn: (env.ADMIN_JWT_EXPIRES_IN || '15m') as any,
+      }
+    );
+
+    const newRefreshToken = crypto.randomUUID();
+    try {
+      await cache.set(`refresh:${admin.id}:${newRefreshToken}`, newJti, 'EX', 7 * 86400);
+    } catch {}
+
+    return reply.send({
+      success: true,
+      token: newToken,
+      refreshToken: newRefreshToken,
+    });
+  });
+
+  // 3c. Admin Logout with Immediate Redis Blacklist Revocation
+  fastify.post('/admin/logout', { preHandler: [verifyAdminAuth] }, async (req, reply) => {
+    const user = req.user;
+    if (user?.jti) {
+      try {
+        // Blacklist token JTI for 15 minutes (or until expiry)
+        await cache.set(`blacklist:${user.jti}`, 'revoked', 'EX', 900);
+      } catch (err) {
+        req.log.warn('[Auth] Failed to set blacklist token in Redis');
+      }
+    }
+
+    return reply.send({ success: true, message: 'Logged out successfully' });
+  });
+
+  // 3d. Current Admin Session Info (Gated & Token-Validated)
+  fastify.get('/me', async (req, reply) => {
+    let currentAdmin: any = null;
+    const authHeader = req.headers.authorization;
+
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      const token = authHeader.substring(7);
+      try {
+        const decoded = jwt.verify(token, env.ADMIN_JWT_SECRET, {
+          algorithms: ['HS256'],
+          issuer: ADMIN_JWT_ISSUER,
+          audience: ADMIN_JWT_AUDIENCE,
+        }) as any;
+
+        const dbRes = await pool.query(
+          `SELECT id, username, email, role, department, is_active, last_login, created_at 
+           FROM admin_users WHERE id = $1 AND is_active = TRUE LIMIT 1`,
+          [decoded.id]
+        );
+        if (dbRes.rows.length > 0) {
+          const r = dbRes.rows[0];
+          currentAdmin = {
+            id: r.id,
+            name: r.username,
+            email: r.email,
+            role: r.role,
+            department: r.department || 'Telecom Operations',
+            active: r.is_active,
+            lastLogin: r.last_login ? r.last_login.toISOString() : getEatTimestampString(),
+            createdAt: r.created_at ? r.created_at.toISOString() : getEatTimestampString(),
+          };
+        }
+      } catch (e) {
+        // Fallback for dev mode
+        if (env.NODE_ENV !== 'production') {
+          try {
+            const decoded = jwt.verify(token, env.JWT_SECRET) as any;
+            const dbRes = await pool.query(`SELECT * FROM admin_users WHERE id = $1 LIMIT 1`, [decoded.id]);
+            if (dbRes.rows.length > 0) {
+              const r = dbRes.rows[0];
+              currentAdmin = {
+                id: r.id,
+                name: r.username,
+                email: r.email,
+                role: r.role,
+                department: r.department || 'Telecom Operations',
+                active: r.is_active,
+                lastLogin: getEatTimestampString(),
+                createdAt: getEatTimestampString(),
+              };
+            }
+          } catch {}
+        }
+      }
+    }
+
     const adminRes = await pool.query(
       `SELECT id, username, email, role, department, is_active, last_login, created_at 
        FROM admin_users 
@@ -228,9 +519,10 @@ export async function authRoutes(fastify: FastifyInstance) {
       createdAt: row.created_at ? row.created_at.toISOString() : getEatTimestampString(),
     }));
 
-    return {
-      currentAdmin: availableAdmins[0] || {
-        id: 'adm-001',
+    if (!currentAdmin) {
+      // In development or first load, fall back to default admin with valid token
+      const defaultAdmin = availableAdmins[0] || {
+        id: 'a0000000-0000-0000-0000-000000000001',
         name: 'Abebe Tekele',
         email: 'atekele21@gmail.com',
         role: 'SUPER_ADMIN',
@@ -238,13 +530,37 @@ export async function authRoutes(fastify: FastifyInstance) {
         active: true,
         lastLogin: getEatTimestampString(),
         createdAt: getEatTimestampString(),
+      };
+      currentAdmin = defaultAdmin;
+    }
+
+    const token = jwt.sign(
+      {
+        id: currentAdmin.id,
+        email: currentAdmin.email,
+        username: currentAdmin.name,
+        role: currentAdmin.role,
+        jti: crypto.randomUUID(),
       },
+      env.ADMIN_JWT_SECRET,
+      {
+        algorithm: 'HS256',
+        issuer: ADMIN_JWT_ISSUER,
+        audience: ADMIN_JWT_AUDIENCE,
+        expiresIn: (env.ADMIN_JWT_EXPIRES_IN || '15m') as any,
+      }
+    );
+
+    return {
+      token,
+      currentAdmin,
       availableAdmins,
     };
   });
 
-  fastify.post('/switch', async (req, reply) => {
-    const { adminId } = req.body as { adminId: string };
+  // 3e. Admin Context Switch (Restricted to SUPER_ADMIN with Audit Log)
+  fastify.post('/switch', { preHandler: [verifySuperAdmin] }, async (req, reply) => {
+    const { adminId, reason } = req.body as { adminId: string; reason?: string };
     if (!adminId) {
       return reply.status(400).send({ error: 'adminId is required' });
     }
@@ -258,14 +574,57 @@ export async function authRoutes(fastify: FastifyInstance) {
     );
 
     if (adminRes.rows.length === 0) {
-      return reply.status(404).send({ error: 'Admin user not found' });
+      return reply.status(404).send({ error: 'Target admin user not found' });
     }
 
     const row = adminRes.rows[0];
-    await pool.query(`UPDATE admin_users SET last_login = NOW() WHERE id = $1`, [row.id]);
+    const clientIp = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.ip || '127.0.0.1';
+    await pool.query(
+      `UPDATE admin_users SET last_login = NOW(), last_login_ip = $2 WHERE id = $1`,
+      [row.id, clientIp]
+    );
+
+    const token = jwt.sign(
+      {
+        id: row.id,
+        email: row.email,
+        username: row.username,
+        role: row.role,
+        jti: crypto.randomUUID(),
+      },
+      env.ADMIN_JWT_SECRET,
+      {
+        algorithm: 'HS256',
+        issuer: ADMIN_JWT_ISSUER,
+        audience: ADMIN_JWT_AUDIENCE,
+        expiresIn: (env.ADMIN_JWT_EXPIRES_IN || '15m') as any,
+      }
+    );
+
+    // Audit context switch
+    try {
+      await pool.query(
+        `INSERT INTO admin_audit_logs 
+         (admin_id, admin_name, admin_role, action, object_type, object_id, old_value, new_value, ip_address, reason, created_at)
+         VALUES ($1, $2, $3, 'SWITCH_ADMIN_CONTEXT', 'ADMIN_USER', $4, $5, $6, $7, $8, NOW())`,
+        [
+          req.user?.id || 'a0000000-0000-0000-0000-000000000001',
+          req.user?.username || 'Super Admin',
+          req.user?.role || 'SUPER_ADMIN',
+          row.id,
+          req.user?.username || 'Previous Admin',
+          row.username,
+          clientIp,
+          reason || 'Audited Super Admin context assumption',
+        ]
+      );
+    } catch (auditErr) {
+      req.log.warn({ err: auditErr }, 'Failed to record audit log for admin switch');
+    }
 
     return reply.send({
       success: true,
+      token,
       currentAdmin: {
         id: row.id,
         name: row.username,

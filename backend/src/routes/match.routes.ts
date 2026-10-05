@@ -15,7 +15,9 @@ export async function matchRoutes(fastify: FastifyInstance) {
     const authHeader = req.headers.authorization;
     if (authHeader && authHeader.startsWith('Bearer ')) {
       try {
-        const decoded = jwt.verify(authHeader.substring(7), env.JWT_SECRET) as any;
+        const decoded = jwt.verify(authHeader.substring(7), env.JWT_SECRET, {
+          algorithms: ['HS256'],
+        }) as any;
         msisdn = decoded.msisdn;
       } catch {
         // Token invalid/expired; continue to check body

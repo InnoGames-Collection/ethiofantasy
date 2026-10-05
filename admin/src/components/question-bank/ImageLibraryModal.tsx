@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   X,
   Search,
@@ -12,7 +12,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { QuestionImage } from '../../types';
-import { INITIAL_IMAGE_LIBRARY } from './mockQuestionBankData';
+import { api } from '../../services/api';
 
 interface ImageLibraryModalProps {
   isOpen: boolean;
@@ -27,10 +27,27 @@ export const ImageLibraryModal: React.FC<ImageLibraryModalProps> = ({
   onSelectImage,
   isSelectingForQuestion = false,
 }) => {
-  const [images, setImages] = useState<QuestionImage[]>(INITIAL_IMAGE_LIBRARY);
+  const [images, setImages] = useState<QuestionImage[]>([]);
+  const [loading, setLoading] = useState(false);
   const [activeCategory, setActiveCategory] = useState<string>('ALL');
   const [searchTerm, setSearchTerm] = useState('');
   const [copiedUrl, setCopiedUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const fetchImages = async () => {
+      try {
+        setLoading(true);
+        const data = await api.getQuizImages();
+        setImages(data || []);
+      } catch (err) {
+        console.error('Failed to load images from PostgreSQL:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchImages();
+  }, [isOpen]);
 
   // Add new image state
   const [isAddOpen, setIsAddOpen] = useState(false);

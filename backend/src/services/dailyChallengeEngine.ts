@@ -199,6 +199,10 @@ export const DailyChallengeEngine = {
     const today = getEatDateString();
     const challenge = await this.ensureDailyChallenge(today);
     const questions = typeof challenge.questions === 'string' ? JSON.parse(challenge.questions) : challenge.questions;
+    const sanitizedQuestions = questions.map((q: any) => {
+      const { correctAnswerIndex, correct_index, explanation, ...rest } = q;
+      return rest;
+    });
 
     // Check existing attempt
     const attRes = await pool.query(
@@ -229,7 +233,7 @@ export const DailyChallengeEngine = {
           totalResponseTime: (existing.total_response_time_ms || 0) / 1000,
           answers: existing.answers || [],
         },
-        questions,
+        questions: sanitizedQuestions,
       };
     }
 
@@ -255,7 +259,7 @@ export const DailyChallengeEngine = {
     return {
       success: true,
       attempt: newAttempt,
-      questions,
+      questions: sanitizedQuestions,
     };
   },
 

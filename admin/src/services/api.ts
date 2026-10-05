@@ -14,11 +14,34 @@ import {
 } from '../types';
 
 const API_BASE = '/api';
+const TOKEN_KEY = 'ethiofantasy_admin_token';
+
+export function getAdminToken(): string | null {
+  try {
+    return localStorage.getItem(TOKEN_KEY);
+  } catch {
+    return null;
+  }
+}
+
+export function setAdminToken(token: string): void {
+  try {
+    localStorage.setItem(TOKEN_KEY, token);
+  } catch {}
+}
+
+export function clearAdminToken(): void {
+  try {
+    localStorage.removeItem(TOKEN_KEY);
+  } catch {}
+}
 
 async function request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
-  const headers = {
+  const token = getAdminToken();
+  const headers: Record<string, string> = {
     'Content-Type': 'application/json',
-    ...(options.headers || {}),
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    ...((options.headers as any) || {}),
   };
 
   const response = await fetch(`${API_BASE}${endpoint}`, {
@@ -30,7 +53,9 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
     let errorMsg = `HTTP Error ${response.status}`;
     try {
       const errorData = await response.json();
-      if (errorData?.error) errorMsg = errorData.error;
+      if (errorData?.error || errorData?.message) {
+        errorMsg = errorData.message || errorData.error;
+      }
     } catch {
       // fallback
     }
@@ -41,23 +66,50 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
 }
 
 export const api = {
-  // Auth
-  async getAuthMe(): Promise<{ currentAdmin: AdminUser; availableAdmins: AdminUser[] }> {
-    return request('/auth/me');
+  // ── Auth ──────────────────────────────────────────────────────────────────
+  async login(email: string, password: string): Promise<{ success: boolean; token: string; admin: AdminUser }> {
+    const res = await request<any>('/auth/admin/login', {
+      method: 'POST',
+      body: JSON.stringify({ email, password }),
+    });
+    if (res.token) {
+      setAdminToken(res.token);
+    }
+    return res;
   },
+
+  async logout(): Promise<void> {
+    try {
+      await request('/auth/admin/logout', { method: 'POST' });
+    } catch {}
+    clearAdminToken();
+  },
+
+  async getAuthMe(): Promise<{ currentAdmin: AdminUser; availableAdmins: AdminUser[] }> {
+    const res = await request<{ token?: string; currentAdmin: AdminUser; availableAdmins: AdminUser[] }>('/auth/me');
+    if (res.token) {
+      setAdminToken(res.token);
+    }
+    return res;
+  },
+
   async switchAdmin(adminId: string): Promise<{ success: boolean; currentAdmin: AdminUser }> {
-    return request('/auth/switch', {
+    const res = await request<{ success: boolean; token?: string; currentAdmin: AdminUser }>('/auth/switch', {
       method: 'POST',
       body: JSON.stringify({ adminId }),
     });
+    if (res.token) {
+      setAdminToken(res.token);
+    }
+    return res;
   },
 
-  // Dashboard
+  // ── Dashboard ─────────────────────────────────────────────────────────────
   async getDashboardStats(): Promise<DashboardStats> {
     return request('/dashboard/stats');
   },
 
-  // Daily Challenge
+  // ── Daily Challenge ───────────────────────────────────────────────────────
   async getDailyChallenges(): Promise<DailyChallenge[]> {
     return request('/daily-challenge');
   },
@@ -83,7 +135,7 @@ export const api = {
     });
   },
 
-  // Weekly Competition
+  // ── Weekly Competition ────────────────────────────────────────────────────
   async getWeeklyCompetitions(): Promise<WeeklyCompetition[]> {
     return request('/weekly-competition');
   },
@@ -120,9 +172,10 @@ export const api = {
     });
   },
 
-  // Prizes
+  // ── Prizes ────────────────────────────────────────────────────────────────
   async getPrizeOverrides(): Promise<PlayerPrizeOverride[]> {
-    return request('/prizes/overrides');
+    const res = await request<any>('/prizes/overrides?pageSize=100');
+    return Array.isArray(res) ? res : res.items || [];
   },
   async createPlayerPrizeOverride(data: {
     msisdn: string;
@@ -137,12 +190,14 @@ export const api = {
     });
   },
 
-  // Players
+  // ── Players ───────────────────────────────────────────────────────────────
   async getPlayers(search?: string, status?: string): Promise<Player[]> {
     const params = new URLSearchParams();
     if (search) params.append('search', search);
-    if (status) params.append('status', status);
-    return request(`/players?${params.toString()}`);
+    if (status && status !== 'ALL') params.append('status', status);
+    params.append('pageSize', '100');
+    const res = await request<any>(`/players?${params.toString()}`);
+    return Array.isArray(res) ? res : res.items || [];
   },
   async getPlayerDetails(id: string): Promise<any> {
     return request(`/players/${id}`);
@@ -166,15 +221,17 @@ export const api = {
     });
   },
 
-  // Quiz
+  // ── Quiz & Question Bank ──────────────────────────────────────────────────
   async getQuizLevels(): Promise<QuizLevel[]> {
     return request('/quiz/levels');
   },
   async getQuizQuestions(levelNumber?: number, status?: string): Promise<QuizQuestion[]> {
     const params = new URLSearchParams();
     if (levelNumber) params.append('levelNumber', String(levelNumber));
-    if (status) params.append('status', status);
-    return request(`/quiz/questions?${params.toString()}`);
+    if (status && status !== 'ALL') params.append('status', status);
+    params.append('pageSize', '100');
+    const res = await request<any>(`/quiz/questions?${params.toString()}`);
+    return Array.isArray(res) ? res : res.items || [];
   },
   async createQuizQuestion(data: Partial<QuizQuestion>, reason: string): Promise<{ question: QuizQuestion }> {
     return request('/quiz/questions', {
@@ -195,12 +252,28 @@ export const api = {
     });
   },
 
-  // Subscriptions
+  // ── Images Catalog ────────────────────────────────────────────────────────
+  async getQuizImages(category?: string, search?: string): Promise<any[]> {
+    const params = new URLSearchParams();
+    if (category && category !== 'ALL') params.append('category', category);
+    if (search) params.append('search', search);
+    return request(`/quiz/images?${params.toString()}`);
+  },
+  async createQuizImage(data: any): Promise<any> {
+    return request('/quiz/images', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  // ── Subscriptions ─────────────────────────────────────────────────────────
   async getSubscriptions(search?: string, status?: string): Promise<SubscriptionRecord[]> {
     const params = new URLSearchParams();
     if (search) params.append('search', search);
-    if (status) params.append('status', status);
-    return request(`/subscriptions?${params.toString()}`);
+    if (status && status !== 'ALL') params.append('status', status);
+    params.append('pageSize', '100');
+    const res = await request<any>(`/subscriptions?${params.toString()}`);
+    return Array.isArray(res) ? res : res.items || [];
   },
   async updateSubscriptionStatus(id: string, status: string, reason: string): Promise<{ subscription: SubscriptionRecord }> {
     return request(`/subscriptions/${id}/status`, {
@@ -209,7 +282,7 @@ export const api = {
     });
   },
 
-  // Reports
+  // ── Reports ───────────────────────────────────────────────────────────────
   async getReportData(type: string, options: { competitionId?: string; dateFrom?: string; dateTo?: string } = {}): Promise<any> {
     const params = new URLSearchParams({ type });
     if (options.competitionId) params.append('competitionId', options.competitionId);
@@ -221,7 +294,7 @@ export const api = {
     return `${API_BASE}/reports/export?type=${type}&unmasked=${unmasked ? 'true' : 'false'}`;
   },
 
-  // Settings
+  // ── Settings ──────────────────────────────────────────────────────────────
   async getSettings(): Promise<ServiceSettings> {
     return request('/settings');
   },
@@ -232,7 +305,7 @@ export const api = {
     });
   },
 
-  // Admin Users
+  // ── Admin Users ───────────────────────────────────────────────────────────
   async getAdminUsers(): Promise<AdminUser[]> {
     return request('/admin-users');
   },
@@ -255,17 +328,19 @@ export const api = {
     });
   },
 
-  // Audit Logs
+  // ── Audit Logs ────────────────────────────────────────────────────────────
   async getAuditLogs(filters: { dateFrom?: string; dateTo?: string; action?: string; objectType?: string } = {}): Promise<AuditLogEntry[]> {
     const params = new URLSearchParams();
     if (filters.dateFrom) params.append('dateFrom', filters.dateFrom);
     if (filters.dateTo) params.append('dateTo', filters.dateTo);
-    if (filters.action) params.append('action', filters.action);
-    if (filters.objectType) params.append('objectType', filters.objectType);
-    return request(`/audit-logs?${params.toString()}`);
+    if (filters.action && filters.action !== 'ALL') params.append('action', filters.action);
+    if (filters.objectType && filters.objectType !== 'ALL') params.append('objectType', filters.objectType);
+    params.append('pageSize', '100');
+    const res = await request<any>(`/audit-logs?${params.toString()}`);
+    return Array.isArray(res) ? res : res.items || [];
   },
 
-  // System Mode
+  // ── System Mode ───────────────────────────────────────────────────────────
   async switchSystemMode(mode: 'DEMO' | 'PRODUCTION'): Promise<{ success: boolean; mode: 'DEMO' | 'PRODUCTION' }> {
     return request('/system/mode', {
       method: 'POST',

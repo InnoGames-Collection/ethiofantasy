@@ -17,6 +17,7 @@ import {
   recordDailyChallengeScore,
   startDailyChallenge,
   getTop10Leaderboard,
+  fetchTop10Leaderboard,
   getDailyChallengeQuestions,
   getCurrentServiceDate,
   isDailyChallengeReviewLocked,
@@ -364,10 +365,18 @@ export default function App() {
     setActiveNavTab('HOME');
   };
 
-  // 7-Day Top 10 Leaderboard Data
-  const leaderboardInfo = useMemo(() => {
-    return getTop10Leaderboard(userProfile.msisdn, dailyChallengeState.sevenDayTotal);
-  }, [userProfile.msisdn, dailyChallengeState.sevenDayTotal]);
+  // 7-Day Top 10 Leaderboard Data (Real-Time API with graceful fallback)
+  const [leaderboardInfo, setLeaderboardInfo] = useState(() =>
+    getTop10Leaderboard(userProfile.msisdn, dailyChallengeState.sevenDayTotal)
+  );
+
+  useEffect(() => {
+    fetchTop10Leaderboard(userProfile.msisdn).then((info) => {
+      if (info && info.top10 && info.top10.length > 0) {
+        setLeaderboardInfo(info);
+      }
+    });
+  }, [userProfile.msisdn, activeNavTab, dailyChallengeState.sevenDayTotal]);
 
   const currentLevelNumber = Math.min(100, Math.max(...userProgress.unlockedLevelIds, 1));
 

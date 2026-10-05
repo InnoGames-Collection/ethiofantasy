@@ -17,9 +17,12 @@ export const env = cleanEnv(process.env, {
   // Valkey / Redis
   VALKEY_URL: str({ default: 'redis://localhost:6379' }),
 
-  // Security & Secrets
+  // Security & Secrets (Strict Player vs Admin Key Isolation)
   JWT_SECRET: str({ default: 'ethiofantasy-telecom-jwt-secret-key-prod-2026' }),
   JWT_ACCESS_EXPIRES_IN: str({ default: '24h' }),
+  ADMIN_JWT_SECRET: str({ default: 'ethiofantasy-admin-dedicated-jwt-secret-prod-2026' }),
+  ADMIN_JWT_EXPIRES_IN: str({ default: '15m' }),
+  ADMIN_REFRESH_EXPIRES_IN: str({ default: '7d' }),
   CRON_SECRET: str({ default: 'ethiofantasy-cron-secret-2026' }),
 
   // Telecom SP Gateway (SDP)

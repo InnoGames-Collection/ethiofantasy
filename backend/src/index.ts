@@ -24,27 +24,42 @@ const fastify = Fastify({
 });
 
 async function main() {
-  // 1. Security Headers & CORS
+  // 1. Security Headers & Strict CORS Whitelist
   await fastify.register(helmet, {
     contentSecurityPolicy: false,
+    frameguard: { action: 'deny' },
+    noSniff: true,
+    hsts: { maxAge: 31536000, includeSubDomains: true },
   });
+
+  const allowedOriginsList = (env.ALLOWED_ORIGINS || '')
+    .split(',')
+    .map((o) => o.trim())
+    .filter(Boolean);
 
   await fastify.register(cors, {
     origin: (origin, cb) => {
-      // Allow local development, telecom webviews, and production domain
-      if (
-        !origin ||
-        origin.includes('innopulseplatform.com') ||
-        origin.includes('localhost') ||
-        origin.includes('127.0.0.1')
-      ) {
+      // Allow requests with no origin (mobile app, curl, server-to-server)
+      if (!origin) {
         cb(null, true);
         return;
       }
-      cb(null, true);
+
+      const isAllowed =
+        allowedOriginsList.includes(origin) ||
+        origin.endsWith('.innopulseplatform.com') ||
+        (env.NODE_ENV !== 'production' &&
+          (origin.startsWith('http://localhost:') || origin.startsWith('http://127.0.0.1:')));
+
+      if (isAllowed) {
+        cb(null, true);
+      } else {
+        cb(new Error(`CORS Error: Origin ${origin} not permitted`), false);
+      }
     },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
   });
 
   // 2. Global Rate Limiter
@@ -53,6 +68,38 @@ async function main() {
   // 3. Healthcheck Probes
   fastify.get('/health', async () => ({ status: 'healthy', service: 'ethiofantasy-api', timestamp: new Date().toISOString() }));
   fastify.get('/api/v1/health', async () => ({ status: 'healthy', platform: 'EthioFantasy', version: '1.0.0' }));
+
+  // Liveness Probe: Quick validation that Node event loop is responsive
+  fastify.get('/healthz/live', async (_req, reply) => {
+    return reply.status(200).send({ status: 'LIVE', timestamp: new Date().toISOString() });
+  });
+
+  // Readiness Probe: Validates both PostgreSQL and Valkey / Redis are healthy
+  fastify.get('/healthz/ready', async (_req, reply) => {
+    let dbStatus = 'FAIL';
+    let cacheStatus = 'FAIL';
+
+    try {
+      const dbTest = await pool.query('SELECT 1 as alive');
+      if (dbTest.rows[0]?.alive === 1) dbStatus = 'OK';
+    } catch (err: any) {
+      fastify.log.error({ err }, 'Readiness probe DB check failed');
+    }
+
+    try {
+      const redisPong = await cache.ping();
+      if (redisPong === 'PONG') cacheStatus = 'OK';
+    } catch (err: any) {
+      fastify.log.warn({ err }, 'Readiness probe Cache check failed');
+    }
+
+    const isHealthy = dbStatus === 'OK' && cacheStatus === 'OK';
+    return reply.status(isHealthy ? 200 : 503).send({
+      status: isHealthy ? 'READY' : 'DEGRADED',
+      checks: { database: dbStatus, redis: cacheStatus },
+      uptimeSeconds: Math.floor(process.uptime()),
+    });
+  });
 
   // 4. API Routes
   await fastify.register(authRoutes, { prefix: '/api/auth' });

@@ -26,7 +26,6 @@ import { QuestionPreviewModal } from '../components/question-bank/QuestionPrevie
 import { ImageLibraryModal } from '../components/question-bank/ImageLibraryModal';
 import { BulkImportModal } from '../components/question-bank/BulkImportModal';
 import { ExportModal } from '../components/question-bank/ExportModal';
-import { INITIAL_QUESTION_BANK } from '../components/question-bank/mockQuestionBankData';
 
 interface QuizManagementPageProps {
   currentRole: AdminRole;
@@ -94,7 +93,7 @@ export const QuizManagementPage: React.FC<QuizManagementPageProps> = ({ currentR
 
   const canEdit = currentRole === 'SUPER_ADMIN' || currentRole === 'OPERATIONS_ADMIN';
 
-  // Load initial dataset from backend & seed with rich demo catalog
+  // Load authoritative questions and levels directly from PostgreSQL
   const loadData = async () => {
     try {
       setLoading(true);
@@ -105,7 +104,6 @@ export const QuizManagementPage: React.FC<QuizManagementPageProps> = ({ currentR
 
       setLevels(lvls || []);
 
-      // If server returned items, normalize and merge with rich demo questions
       if (serverQuestions && serverQuestions.length > 0) {
         const normalizedServerQs: QuizQuestion[] = serverQuestions.map((sq, idx) => ({
           ...sq,
@@ -115,17 +113,13 @@ export const QuizManagementPage: React.FC<QuizManagementPageProps> = ({ currentR
           category: sq.category ? sq.category.replace(/_/g, ' ') : 'General Football',
           status: sq.status || 'PUBLISHED',
         }));
-
-        // Merge keeping unique IDs
-        const existingIds = new Set(normalizedServerQs.map((q) => q.id));
-        const additional = INITIAL_QUESTION_BANK.filter((q) => !existingIds.has(q.id));
-        setQuestions([...normalizedServerQs, ...additional]);
+        setQuestions(normalizedServerQs);
       } else {
-        setQuestions(INITIAL_QUESTION_BANK);
+        setQuestions([]);
       }
     } catch (err: any) {
       console.error('Failed to load quiz data:', err);
-      setQuestions(INITIAL_QUESTION_BANK);
+      setQuestions([]);
     } finally {
       setLoading(false);
     }

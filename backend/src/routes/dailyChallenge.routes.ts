@@ -1,5 +1,6 @@
 import { FastifyInstance } from 'fastify';
 import { DailyChallengeEngine } from '../services/dailyChallengeEngine.js';
+import { AuthoritativeGameEngine } from '../services/authoritativeGameEngine.js';
 
 export async function dailyChallengeRoutes(fastify: FastifyInstance) {
   /**
@@ -21,6 +22,7 @@ export async function dailyChallengeRoutes(fastify: FastifyInstance) {
 
   /**
    * 2. Start or Resume Daily Challenge Session (Strictly 1 attempt per day per MSISDN in EAT)
+   * Sanitizes all questions by stripping answer keys (correct_index / correctAnswerIndex / explanation).
    */
   fastify.post('/start', async (req, reply) => {
     const body = (req.body || {}) as { msisdn?: string };
@@ -28,7 +30,7 @@ export async function dailyChallengeRoutes(fastify: FastifyInstance) {
       return reply.status(400).send({ success: false, error: 'MSISDN is required' });
     }
 
-    const result = await DailyChallengeEngine.startSession(body.msisdn);
+    const result = await AuthoritativeGameEngine.startDailySession(body.msisdn);
     if (!result.success) {
       return reply.status(403).send(result);
     }
@@ -38,33 +40,37 @@ export async function dailyChallengeRoutes(fastify: FastifyInstance) {
 
   /**
    * 3. Authoritative Answer Validation & Scoring (10s countdown, 1 base + speed points)
+   * Calculates latency from server wall-clock timer, rejecting forged client timestamps.
    */
   fastify.post('/submit-answer', async (req, reply) => {
     const payload = (req.body || {}) as {
       msisdn?: string;
       rawMsisdn?: string;
-      attemptId: string;
+      sessionId?: string;
+      attemptId?: string;
       questionId: string;
-      questionStartTimestamp: string | number;
-      answerTimestamp: string | number;
-      selectedOptionIndex: number | null;
+      selectedOptionIndex?: number | null;
+      selectedIndex?: number | null;
     };
 
     const msisdn = payload.msisdn || payload.rawMsisdn;
-    if (!msisdn || !payload.attemptId || !payload.questionId) {
+    if (!msisdn || !payload.questionId) {
       return reply.status(400).send({
         success: false,
-        error: 'Missing required parameters: msisdn, attemptId, questionId',
+        error: 'Missing required parameters: msisdn, questionId',
       });
     }
 
-    const result = await DailyChallengeEngine.recordAnswer({
-      rawMsisdn: msisdn,
+    const selectedIdx = payload.selectedOptionIndex !== undefined 
+      ? payload.selectedOptionIndex 
+      : (payload.selectedIndex !== undefined ? payload.selectedIndex : null);
+
+    const result = await AuthoritativeGameEngine.submitAnswer({
+      msisdn,
+      sessionId: payload.sessionId,
       attemptId: payload.attemptId,
       questionId: payload.questionId,
-      questionStartTimestamp: payload.questionStartTimestamp,
-      answerTimestamp: payload.answerTimestamp,
-      selectedOptionIndex: payload.selectedOptionIndex !== undefined ? payload.selectedOptionIndex : null,
+      selectedIndex: selectedIdx,
     });
 
     if (!result.success) {
