@@ -12,6 +12,7 @@ import { ReportsPage } from './pages/ReportsPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { AdminUsersPage } from './pages/AdminUsersPage';
 import { AuditLogPage } from './pages/AuditLogPage';
+import { LoginPage } from './pages/LoginPage';
 import { api } from './services/api';
 import { AdminUser, DashboardStats } from './types';
 
@@ -38,6 +39,7 @@ export default function App() {
       setSystemMode(statsData.mode);
     } catch (err) {
       console.error('Failed to initialize admin session:', err);
+      setCurrentAdmin(null);
     } finally {
       setIsRefreshing(false);
       setInitialLoading(false);
@@ -47,6 +49,18 @@ export default function App() {
   useEffect(() => {
     initApp();
   }, []);
+
+  const handleLoginSuccess = async (admin: AdminUser) => {
+    setCurrentAdmin(admin);
+    await initApp();
+  };
+
+  const handleLogout = async () => {
+    try {
+      await api.logout();
+    } catch {}
+    setCurrentAdmin(null);
+  };
 
   const handleSwitchAdmin = async (adminId: string) => {
     try {
@@ -156,6 +170,10 @@ export default function App() {
     );
   }
 
+  if (!currentAdmin) {
+    return <LoginPage onLoginSuccess={handleLoginSuccess} />;
+  }
+
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-[#f8fafc] text-slate-900 font-sans antialiased">
       {/* Desktop Left Sidebar */}
@@ -179,6 +197,7 @@ export default function App() {
           isRefreshing={isRefreshing}
           currentAdmin={currentAdmin}
           systemMode={systemMode}
+          onLogout={handleLogout}
         />
 
         {/* Scrollable View Container */}

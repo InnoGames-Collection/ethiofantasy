@@ -1,5 +1,4 @@
-import React from 'react';
-import { RefreshCw, Radio, Phone, Shield } from 'lucide-react';
+import { RefreshCw, Radio, Phone, Shield, LogOut } from 'lucide-react';
 import { AdminUser } from '../types';
 
 interface HeaderProps {
@@ -9,6 +8,7 @@ interface HeaderProps {
   isRefreshing?: boolean;
   currentAdmin: AdminUser | null;
   systemMode: 'DEMO' | 'PRODUCTION';
+  onLogout?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -18,6 +18,7 @@ export const Header: React.FC<HeaderProps> = ({
   isRefreshing = false,
   currentAdmin,
   systemMode,
+  onLogout,
 }) => {
   return (
     <header className="bg-white border-b border-slate-200 px-8 py-4 flex items-center justify-between sticky top-0 z-10 shadow-xs">
@@ -58,6 +59,17 @@ export const Header: React.FC<HeaderProps> = ({
         >
           <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin text-blue-600' : ''}`} />
         </button>
+
+        {/* Sign Out button */}
+        {onLogout && (
+          <button
+            onClick={onLogout}
+            title="Terminate Administrative Session"
+            className="p-2 text-rose-600 hover:text-rose-700 hover:bg-rose-50 rounded-lg transition-colors border border-rose-200 flex items-center space-x-1"
+          >
+            <LogOut className="w-4 h-4" />
+          </button>
+        )}
       </div>
     </header>
   );

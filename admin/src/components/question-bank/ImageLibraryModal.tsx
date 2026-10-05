@@ -85,7 +85,7 @@ export const ImageLibraryModal: React.FC<ImageLibraryModalProps> = ({
     setTimeout(() => setCopiedUrl(null), 1800);
   };
 
-  const handleAddNewImage = (e: React.FormEvent) => {
+  const handleAddNewImage = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newUrl.trim() || !newTitle.trim()) {
       alert('Please provide Image URL and Title.');
@@ -108,6 +108,13 @@ export const ImageLibraryModal: React.FC<ImageLibraryModalProps> = ({
       credit: 'Custom Operator Asset',
       uploadedAt: new Date().toISOString(),
     };
+
+    try {
+      await api.createQuizImage(created);
+    } catch (err: any) {
+      alert(`Failed to save image to server: ${err.message}`);
+      return;
+    }
 
     setImages([created, ...images]);
     setNewUrl('');
