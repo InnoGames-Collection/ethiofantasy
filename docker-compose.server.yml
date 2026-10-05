@@ -67,6 +67,8 @@ services:
       DATABASE_URL: "postgresql://${POSTGRES_USER:-ethiofantasy_app}:${POSTGRES_PASSWORD:-ethiofantasy_secure_prod_password_2026}@postgres:5432/${POSTGRES_DB:-ethiofantasy}?sslmode=disable"
       VALKEY_URL: "redis://valkey:6379"
       JWT_SECRET: ${JWT_SECRET:-ethiofantasy-telecom-jwt-secret-key-prod-2026}
+      ADMIN_JWT_SECRET: ${ADMIN_JWT_SECRET:-ethiofantasy-admin-dedicated-jwt-secret-prod-2026}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:3400,http://localhost:3403,https://ethiofantasy.innopulseplatform.com,https://ethiofantasy-admin.innopulseplatform.com}
       SP_GATEWAY_URL: ${SP_GATEWAY_URL:-http://168.119.53.26:8484}
       SP_API_KEY: ${SP_API_KEY:-ethiofantasy-sp-api-key-2026}
       SP_WEBHOOK_SECRET: ${SP_WEBHOOK_SECRET:-ethiofantasy-hmac-webhook-secret-2026}
