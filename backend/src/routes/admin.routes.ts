@@ -10,6 +10,7 @@ import {
   getEatTimestampString,
   getCompetitionCycleInfoEAT,
 } from '../utils/time.js';
+import { CompetitionLifecycleService } from '../services/competitionLifecycleService.js';
 import {
   verifyAdmin,
   verifySuperAdmin,
@@ -17,6 +18,13 @@ import {
   verifyAdminAuth,
   verifyAuditorOrAdmin,
 } from '../middleware/auth.js';
+
+function formatDbDateStr(d: any): string {
+  if (!d) return '';
+  if (typeof d === 'string') return d.slice(0, 10);
+  if (d instanceof Date) return getEatDateString(d);
+  return String(d).slice(0, 10);
+}
 
 // ==============================================================================
 // Validation Schemas (Zod)
@@ -100,6 +108,10 @@ export async function adminRoutes(fastify: FastifyInstance) {
   // 1. Dashboard Metrics & High-Level KPIs (100% Live GCP PostgreSQL Aggregations)
   // --------------------------------------------------------------------------
   fastify.get('/dashboard/stats', { preHandler: [verifyAdmin] }, async (req) => {
+    // Keep EAT daily challenges and weekly competition cycles synchronized
+    await CompetitionLifecycleService.syncDailyChallengesStatus();
+    await CompetitionLifecycleService.syncWeeklyCompetitionStatus();
+
     const today = getEatDateString();
     const cycle = getCompetitionCycleInfoEAT(today);
 
@@ -166,7 +178,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
       };
     }
 
-    // Leader for current weekly competition cycle
+    // Leader for current weekly competition cycle (check daily_attempts then fallback to weekly_leaderboard)
     const leaderRes = await pool.query(
       `SELECT player_msisdn, SUM(score)::int as total_score
        FROM daily_attempts
@@ -177,7 +189,20 @@ export async function adminRoutes(fastify: FastifyInstance) {
       [cycle.cycleStartDate, today]
     );
 
-    const leader = leaderRes.rows[0] || null;
+    let leader = leaderRes.rows[0] || null;
+    if (!leader && activeComp?.competition_id) {
+      const topLb = await pool.query(
+        `SELECT player_msisdn, total_7day_score as total_score 
+         FROM weekly_leaderboard 
+         WHERE competition_id = $1 
+         ORDER BY rank ASC 
+         LIMIT 1`,
+        [activeComp.competition_id]
+      );
+      if (topLb.rows[0]) {
+        leader = topLb.rows[0];
+      }
+    }
 
     return {
       mode: systemMode,
@@ -193,10 +218,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
         ? {
             id: dc.challenge_id,
             title: dc.title,
-            date:
-              dc.challenge_date instanceof Date
-                ? dc.challenge_date.toISOString().slice(0, 10)
-                : String(dc.challenge_date).slice(0, 10),
+            date: formatDbDateStr(dc.challenge_date),
             status: dc.status || 'OPEN',
             participantsCount: todayParticipants,
             completedCount: todayParticipants,
@@ -268,10 +290,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
           : row.questions || [];
       return {
         id: row.challenge_id,
-        date:
-          row.challenge_date instanceof Date
-            ? row.challenge_date.toISOString().slice(0, 10)
-            : String(row.challenge_date).slice(0, 10),
+        date: formatDbDateStr(row.challenge_date),
         status: row.status || 'OPEN',
         title: row.title,
         startTime: row.start_time || '00:00',
@@ -305,10 +324,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
     }
 
     const row = res.rows[0];
-    const dateStr =
-      row.challenge_date instanceof Date
-        ? row.challenge_date.toISOString().slice(0, 10)
-        : String(row.challenge_date).slice(0, 10);
+    const dateStr = formatDbDateStr(row.challenge_date);
 
     const partsRes = await pool.query(
       `SELECT attempt_id, player_msisdn, score, total_response_time_ms, is_completed, submitted_at, final_submission_timestamp
@@ -473,8 +489,19 @@ export async function adminRoutes(fastify: FastifyInstance) {
 
     const row = compRes.rows[0];
     const lbRes = await pool.query(
-      `SELECT * FROM weekly_leaderboard WHERE competition_id = $1 ORDER BY rank ASC LIMIT 50`,
-      [id]
+      `SELECT lb.*,
+              COALESCE(da.days_participated, 7)::int as days_participated
+       FROM weekly_leaderboard lb
+       LEFT JOIN (
+         SELECT player_msisdn, COUNT(*)::int as days_participated
+         FROM daily_attempts
+         WHERE attempt_date >= $2::date AND attempt_date <= $3::date AND is_completed = TRUE
+         GROUP BY player_msisdn
+       ) da ON lb.player_msisdn = da.player_msisdn
+       WHERE lb.competition_id = $1 
+       ORDER BY lb.rank ASC 
+       LIMIT 50`,
+      [id, row.start_date, row.end_date]
     );
 
     const participants = lbRes.rows.map((p) => ({
@@ -485,7 +512,8 @@ export async function adminRoutes(fastify: FastifyInstance) {
       fullMsisdn: p.player_msisdn,
       score: p.total_7day_score,
       rank: p.rank,
-      levelsCompleted: 7,
+      levelsCompleted: p.days_participated || 7,
+      daysParticipated: p.days_participated || 7,
       timeSpentSeconds: (p.total_response_time_ms || 0) / 1000,
       eligibleForPrize: p.prize_etb > 0,
       prizeAssignedBirr: parseFloat(p.prize_etb || 0),
@@ -564,168 +592,22 @@ export async function adminRoutes(fastify: FastifyInstance) {
       return reply.status(400).send({ error: 'Audited justification required for tournament settlement' });
     }
 
-    const lockKey = `lock:settlement:weekly:${id}`;
-    const lockToken = crypto.randomUUID();
+    const adminName = (req as any).user?.username || (req as any).user?.email || 'Operations Admin';
+    const adminId = (req as any).user?.id;
 
-    // 1. Acquire Distributed Valkey/Redis Lock (TTL 30s)
-    let acquiredLock = false;
-    try {
-      const lockRes = await cache.set(lockKey, lockToken, 'PX', 30000, 'NX');
-      acquiredLock = lockRes === 'OK';
-    } catch {
-      // In case Redis is offline, fallback strictly to PostgreSQL advisory lock
-      acquiredLock = true;
+    const result = await CompetitionLifecycleService.settleCompetition({
+      competitionId: id,
+      reason,
+      adminName,
+      adminId,
+    });
+
+    if (!result.success) {
+      const statusCode = result.error === 'COMPETITION_NOT_FOUND' ? 404 : 409;
+      return reply.status(statusCode).send(result);
     }
 
-    if (!acquiredLock) {
-      return reply.status(409).send({
-        success: false,
-        error: 'SETTLEMENT_IN_PROGRESS',
-        message: 'A tournament settlement operation is currently executing for this cycle.',
-      });
-    }
-
-    const client = await pool.connect();
-    try {
-      // 2. Open ACID Database Transaction with Row Lock & Advisory Lock
-      await client.query('BEGIN');
-      await client.query(`SELECT pg_advisory_xact_lock(hashtext($1))`, [`weekly_settle_${id}`]);
-
-      const compRes = await client.query(
-        `SELECT * FROM weekly_competitions WHERE competition_id = $1 FOR UPDATE`,
-        [id]
-      );
-
-      if (compRes.rows.length === 0) {
-        await client.query('ROLLBACK');
-        return reply.status(404).send({ error: 'Weekly competition cycle not found' });
-      }
-
-      const comp = compRes.rows[0];
-
-      // Check Idempotency State: If already settled, do not recalculate!
-      if (comp.settlement_status === 'SETTLED') {
-        await client.query('ROLLBACK');
-        return reply.send({
-          success: true,
-          message: 'Tournament cycle already settled and prizes allocated. Idempotent return.',
-          finalizedAt: comp.finalized_at,
-          settlementStatus: 'SETTLED',
-        });
-      }
-
-      // Mark State Transition: SETTLING
-      await client.query(
-        `UPDATE weekly_competitions 
-         SET settlement_status = 'SETTLING' 
-         WHERE competition_id = $1`,
-        [id]
-      );
-
-      // Aggregate top scorers from daily_attempts across cycle dates
-      const startDate = comp.start_date instanceof Date ? comp.start_date.toISOString().slice(0, 10) : String(comp.start_date).slice(0, 10);
-      const endDate = comp.end_date instanceof Date ? comp.end_date.toISOString().slice(0, 10) : String(comp.end_date).slice(0, 10);
-
-      const attemptsRes = await client.query(
-        `SELECT player_msisdn, 
-                SUM(score)::int as total_7day_score, 
-                SUM(total_response_time_ms)::int as total_response_time_ms
-         FROM daily_attempts
-         WHERE attempt_date >= $1::date AND attempt_date <= $2::date AND is_completed = TRUE
-         GROUP BY player_msisdn
-         ORDER BY total_7day_score DESC, total_response_time_ms ASC
-         LIMIT 50`,
-        [startDate, endDate]
-      );
-
-      const prizeRules = Array.isArray(comp.prize_rules) ? comp.prize_rules : [];
-      let rank = 1;
-      let totalPrizesDistributed = 0;
-      let totalWinnersCount = 0;
-
-      // Delete any prior unfinalized snapshot for clean deterministic write
-      await client.query(`DELETE FROM weekly_leaderboard WHERE competition_id = $1`, [id]);
-
-      for (const p of attemptsRes.rows) {
-        const currentRank = rank++;
-        const rule = prizeRules.find((r: any) => r.rank === currentRank);
-        const prizeBirr = rule ? parseFloat(rule.prizeAmountBirr || 0) : 0;
-        if (prizeBirr > 0) {
-          totalPrizesDistributed += prizeBirr;
-          totalWinnersCount++;
-        }
-
-        await client.query(
-          `INSERT INTO weekly_leaderboard 
-           (competition_id, player_msisdn, masked_msisdn, total_7day_score, total_response_time_ms, rank, prize_etb, is_disbursed)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, FALSE)`,
-          [
-            id,
-            p.player_msisdn,
-            maskMsisdn(p.player_msisdn),
-            p.total_7day_score,
-            p.total_response_time_ms,
-            currentRank,
-            prizeBirr,
-          ]
-        );
-      }
-
-      // Mark competition state: FINALIZED and SETTLED
-      const adminName = req.user?.username || req.user?.email || 'Operations Admin';
-      const adminId = req.user?.id || 'a0000000-0000-0000-0000-000000000001';
-
-      await client.query(
-        `UPDATE weekly_competitions 
-         SET status = 'FINALIZED',
-             settlement_status = 'SETTLED',
-             finalized_at = NOW(),
-             finalized_by = $2,
-             finalized_by_id = $3,
-             total_winners = $4,
-             total_prizes_distributed_birr = $5
-         WHERE competition_id = $1`,
-        [id, adminName, adminId, totalWinnersCount, totalPrizesDistributed]
-      );
-
-      // Write immutable audit log within the same transaction
-      await logAdminAudit(
-        req,
-        'FINALIZE_WEEKLY_WINNERS',
-        'WEEKLY_COMPETITION',
-        id,
-        { status: comp.status, settlementStatus: comp.settlement_status },
-        { status: 'FINALIZED', settlementStatus: 'SETTLED', winners: totalWinnersCount, totalPrize: totalPrizesDistributed },
-        reason,
-        client
-      );
-
-      await client.query('COMMIT');
-
-      return reply.send({
-        success: true,
-        message: 'Tournament cycle successfully finalized, ranked, and prize allocated.',
-        winnersCount: totalWinnersCount,
-        totalPrizesDistributedBirr: totalPrizesDistributed,
-      });
-    } catch (err: any) {
-      await client.query('ROLLBACK');
-      req.log.error({ err }, '[Tournament Finalize Error] Settlement failed and rolled back');
-      return reply.status(500).send({
-        success: false,
-        error: 'SETTLEMENT_FAILED',
-        message: 'Tournament settlement failed and was rolled back cleanly.',
-      });
-    } finally {
-      client.release();
-      // Release Distributed Valkey Lock
-      try {
-        const currentLock = await cache.get(lockKey);
-        if (currentLock === lockToken) {
-          await cache.del(lockKey);
-        }
-      } catch {}
-    }
+    return reply.send(result);
   });
 
   // Participant Prize Override (Super Admin Only)
@@ -950,7 +832,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
         subscription: {
           status: p.sub_status || 'INACTIVE',
           lastBilledAt: p.last_billed_at,
-          channel: p.channel || 'SMS_6415',
+          channel: p.channel || 'SMS_9401',
         },
       },
       recentAttempts: attemptsRes.rows,
@@ -1299,7 +1181,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
       status: row.status,
       plan: 'DAILY_RECURRING',
       priceBirr: parseFloat(row.price_etb || 2.0),
-      channel: row.channel || 'SMS_6415',
+      channel: row.channel || 'SMS_9401',
       activatedAt: row.created_at ? row.created_at.toISOString() : getEatTimestampString(),
       lastBilledAt: row.last_billed_at ? row.last_billed_at.toISOString() : getEatTimestampString(),
       nextRenewalAt: row.next_billing_at ? row.next_billing_at.toISOString() : getEatTimestampString(),
@@ -1335,8 +1217,8 @@ export async function adminRoutes(fastify: FastifyInstance) {
     const row = res.rows[0] || {};
     return {
       serviceName: row.service_name || 'EthioFantasy',
-      shortcode: row.shortcode || '6415',
-      subscriptionInstruction: row.subscription_instruction || 'Send OK to 6415',
+      shortcode: row.shortcode || '9401',
+      subscriptionInstruction: row.subscription_instruction || 'Send OK to 9401',
       dailySubscriptionPriceBirr: parseFloat(row.daily_subscription_price_birr || 2.0),
       dailyChallengeEnabled: row.daily_challenge_enabled !== false,
       weeklyCompetitionEnabled: row.weekly_competition_enabled !== false,

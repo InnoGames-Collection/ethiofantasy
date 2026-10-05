@@ -390,7 +390,7 @@ export const WeeklyCompetitionPage: React.FC<WeeklyCompetitionPageProps> = ({ cu
                       <th className="px-6 py-3">Rank</th>
                       <th className="px-6 py-3">Player (MSISDN)</th>
                       <th className="px-6 py-3">Weekly Score</th>
-                      <th className="px-6 py-3">Levels Completed</th>
+                      <th className="px-6 py-3">Days Participated</th>
                       <th className="px-6 py-3">Time Spent</th>
                       <th className="px-6 py-3">Eligibility</th>
                       <th className="px-6 py-3">Assigned Prize</th>
@@ -441,7 +441,7 @@ export const WeeklyCompetitionPage: React.FC<WeeklyCompetitionPageProps> = ({ cu
                             {p.score} pts
                           </td>
                           <td className="px-6 py-3.5 font-mono text-slate-600">
-                            Level {p.levelsCompleted} / 4
+                            {p.daysParticipated ?? p.levelsCompleted} / 7 days
                           </td>
                           <td className="px-6 py-3.5 font-mono text-slate-500">
                             {p.timeSpentSeconds}s

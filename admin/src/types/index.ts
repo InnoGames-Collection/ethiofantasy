@@ -100,6 +100,7 @@ export interface CompetitionParticipant {
   score: number;
   rank: number;
   levelsCompleted: number;
+  daysParticipated?: number;
   timeSpentSeconds: number;
   eligibleForPrize: boolean;
   prizeAssignedBirr: number;
@@ -188,7 +189,7 @@ export interface SubscriptionRecord {
   status: 'ACTIVE' | 'INACTIVE' | 'CANCELLED' | 'PENDING';
   plan: 'DAILY_RECURRING';
   priceBirr: number;
-  channel: 'SMS_6415' | 'SMS_900' | 'SMS_9401' | 'USSD' | 'WEB' | 'TELEBIRR';
+  channel: 'SMS_9401' | 'SMS_6415' | 'SMS_900' | 'USSD' | 'WEB' | 'TELEBIRR';
   activatedAt: string;
   lastBilledAt: string;
   nextRenewalAt: string;

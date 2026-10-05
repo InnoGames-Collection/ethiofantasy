@@ -1,7 +1,7 @@
 import { pool } from '../config/database.js';
 import { cache } from '../config/cache.js';
 import { getEatDateString, getEatTimestampString } from '../utils/time.js';
-import { normalizeMsisdn, maskMsisdn } from './dailyChallengeEngine.js';
+import { normalizeMsisdn, maskMsisdn, DailyChallengeEngine } from './dailyChallengeEngine.js';
 
 export interface AnswerSubmissionResult {
   success: boolean;
@@ -71,9 +71,12 @@ export class AuthoritativeGameEngine {
       return {
         success: false,
         code: 'SUBSCRIPTION_REQUIRED',
-        error: 'Active Ethio Telecom subscription required to play. Text OK to 6415.',
+        error: 'Active Ethio Telecom subscription required to play. Text OK to 9401.',
       };
     }
+
+    // Ensure daily challenge exists in database (authoritative foreign key guard)
+    await DailyChallengeEngine.ensureDailyChallenge(today);
 
     // 2. Check for completed attempt today
     const attRes = await pool.query(

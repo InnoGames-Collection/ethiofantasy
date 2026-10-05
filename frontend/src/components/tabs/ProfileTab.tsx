@@ -530,7 +530,7 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
                   </span>
                 </div>
                 <p className="text-xs font-bold text-emerald-700 leading-snug mt-0.5">
-                  2 Birr / Day · Shortcode 6415
+                  2 Birr / Day · Shortcode 9401
                 </p>
               </div>
             </div>
@@ -1190,20 +1190,20 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
                 </a>
               </div>
 
-              {/* SMS Shortcode 6415 */}
+              {/* SMS Shortcode 9401 */}
               <div className="p-3.5 rounded-2xl bg-emerald-50/80 border border-emerald-200/90 flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-xs">
                     <Send className="w-5 h-5" />
                   </div>
                   <div className="flex flex-col">
-                    <span className="text-xs font-black text-emerald-950">SMS Service (6415)</span>
+                    <span className="text-xs font-black text-emerald-950">SMS Service (9401)</span>
                     <span className="text-[11px] font-bold text-emerald-700">Send OK or STOP</span>
                     <span className="text-[10px] text-slate-500">2 Birr / day</span>
                   </div>
                 </div>
                 <a
-                  href="sms:6415?body=OK"
+                  href="sms:9401?body=OK"
                   onClick={() => sound.playTap()}
                   className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black shadow-xs cursor-pointer transition-colors"
                 >
@@ -1247,7 +1247,7 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
               {[
                 { title: 'How to Play Quiz Levels', body: 'Go to the GAME tab to play 100 championship levels. Answer questions before the timer expires to earn stars and unlock further levels.' },
                 { title: 'Daily Challenge & Prizes', body: 'Play the 10-question Daily Challenge each day. Your score accumulates on the 7-day leaderboard towards weekly rewards.' },
-                { title: 'How to Cancel Subscription', body: 'Send an SMS containing STOP to shortcode 6415 anytime from your Ethio Telecom line to cancel with zero penalty.' },
+                { title: 'How to Cancel Subscription', body: 'Send an SMS containing STOP to shortcode 9401 anytime from your Ethio Telecom line to cancel with zero penalty.' },
               ].map((item, idx) => (
                 <div key={idx} className="p-3 rounded-2xl bg-slate-50 border border-slate-200 space-y-1">
                   <h4 className="font-bold text-slate-900 text-xs">{item.title}</h4>
@@ -1325,15 +1325,15 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
             <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 space-y-2 text-xs">
               <div className="flex justify-between items-center text-[11px]">
                 <span className="text-slate-500 font-medium">Shortcode</span>
-                <span className="font-mono font-bold text-slate-900 bg-white px-2 py-0.5 rounded border border-slate-200">6415</span>
+                <span className="font-mono font-bold text-slate-900 bg-white px-2 py-0.5 rounded border border-slate-200">9401</span>
               </div>
               <div className="flex justify-between items-center text-[11px]">
                 <span className="text-slate-500 font-medium">To Subscribe</span>
-                <span className="font-bold text-emerald-700">Send OK to 6415</span>
+                <span className="font-bold text-emerald-700">Send OK to 9401</span>
               </div>
               <div className="flex justify-between items-center text-[11px]">
                 <span className="text-slate-500 font-medium">To Cancel</span>
-                <span className="font-bold text-rose-600">Send STOP to 6415</span>
+                <span className="font-bold text-rose-600">Send STOP to 9401</span>
               </div>
               <div className="flex justify-between items-center text-[11px]">
                 <span className="text-slate-500 font-medium">Customer Support</span>
@@ -1342,12 +1342,12 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
             </div>
 
             <a
-              href="sms:6415?body=OK"
+              href="sms:9401?body=OK"
               onClick={() => sound.playTap()}
               className="w-full py-3.5 px-4 rounded-2xl bg-emerald-600 hover:bg-emerald-500 active:scale-[0.98] text-white font-black text-xs uppercase tracking-wider shadow-md shadow-emerald-600/25 flex items-center justify-center gap-2 cursor-pointer transition-all"
             >
               <Send className="w-4 h-4" />
-              <span>Subscribe (Send OK to 6415)</span>
+              <span>Subscribe (Send OK to 9401)</span>
             </a>
 
             <button
@@ -1388,7 +1388,7 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
               <p>Service: EthioFantasy</p>
               <p>Provider: Ethio Telecom</p>
               <p>Tariff: 2.00 ETB / Day</p>
-              <p>Shortcode: 6415</p>
+              <p>Shortcode: 9401</p>
               <p>Customer Support: 994</p>
               <p>Version: 2.3.0</p>
             </div>

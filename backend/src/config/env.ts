@@ -30,7 +30,7 @@ export const env = cleanEnv(process.env, {
   SP_API_KEY: str({ default: 'ethiofantasy-sp-api-key-2026' }),
   SP_WEBHOOK_SECRET: str({ default: 'ethiofantasy-hmac-webhook-secret-2026' }),
   SP_SERVICE_ID: str({ default: '4' }),
-  SHORTCODE: str({ default: '6415' }),
+  SHORTCODE: str({ default: '9401' }),
 
   // CORS
   ALLOWED_ORIGINS: str({ default: 'http://localhost:3400,http://localhost:3403,https://ethiofantasy.innopulseplatform.com,https://ethiofantasy-admin.innopulseplatform.com' })

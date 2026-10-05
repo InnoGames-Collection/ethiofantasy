@@ -50,7 +50,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
           </div>
           <h2 className="text-xl font-bold text-white tracking-tight">ETHIOFANTASY ADMIN PORTAL</h2>
           <p className="text-xs text-slate-400">
-            Telecom Value Added Services (VAS) • Shortcode 6415 Control Plane
+            Telecom Value Added Services (VAS) • Shortcode 9401 Control Plane
           </p>
         </div>
 

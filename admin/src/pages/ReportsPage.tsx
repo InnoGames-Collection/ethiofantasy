@@ -64,7 +64,13 @@ export const ReportsPage: React.FC<ReportsPageProps> = ({ currentRole }) => {
         dateFrom: dateFrom || undefined,
         dateTo: dateTo || undefined,
       });
-      setReportResult(res);
+      if (Array.isArray(res)) {
+        setReportResult({ data: res, count: res.length, generatedAt: new Date().toISOString() });
+      } else if (res && Array.isArray(res.data)) {
+        setReportResult(res);
+      } else {
+        setReportResult({ data: [], count: 0, generatedAt: new Date().toISOString() });
+      }
     } catch (err: any) {
       setError(err.message);
     } finally {

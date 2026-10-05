@@ -8,6 +8,9 @@ set -Eeuo pipefail
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_DIR"
 
+echo "📥 Syncing latest code from origin repository..."
+git pull origin main || true
+
 WEB_CANARY="http://127.0.0.1:3400/health"
 API_CANARY="http://127.0.0.1:3402/health"
 ADMIN_CANARY="http://127.0.0.1:3403/health"
@@ -36,7 +39,7 @@ for i in {1..30}; do
   sleep 1
 done
 
-echo "📦 Ensuring database migrations and shortcode 6415 are applied..."
+echo "📦 Ensuring database migrations and shortcode 9401 are applied..."
 for migration in db/migrations/*.sql; do
   if [ -f "$migration" ]; then
     echo "  Executing migration: $(basename "$migration")..."

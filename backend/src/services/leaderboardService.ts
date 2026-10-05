@@ -37,7 +37,7 @@ export class LeaderboardService {
 
     // 2. Refresh Cache from Database if Missed
     if (top10.length === 0) {
-      const dbResult = await pool.query(
+      let dbResult = await pool.query(
         `WITH current_cycle AS (
            SELECT start_date, end_date FROM weekly_competitions WHERE status = 'ACTIVE' LIMIT 1
          )
@@ -52,6 +52,22 @@ export class LeaderboardService {
          ORDER BY seven_day_score DESC, total_response_time ASC, last_timestamp ASC, a.player_msisdn ASC
          LIMIT 10`
       );
+
+      // If no daily attempts yet for current cycle, fall back to weekly_leaderboard
+      if (dbResult.rows.length === 0) {
+        dbResult = await pool.query(
+          `SELECT wl.player_msisdn,
+                  wl.total_7day_score as seven_day_score,
+                  wl.total_response_time_ms::numeric / 1000 as total_response_time,
+                  7 as participation_days,
+                  NOW() as last_timestamp
+           FROM weekly_leaderboard wl
+           JOIN weekly_competitions wc ON wl.competition_id = wc.competition_id
+           WHERE wc.status = 'ACTIVE'
+           ORDER BY wl.rank ASC, wl.total_7day_score DESC
+           LIMIT 10`
+        );
+      }
 
       top10 = dbResult.rows.map((row, idx) => ({
         rank: idx + 1,
@@ -78,7 +94,7 @@ export class LeaderboardService {
       if (userRankItem) {
         currentUserPosition = { ...userRankItem, isCurrentUser: true };
       } else {
-        // Query user's aggregate stats directly
+        // Query user's aggregate stats directly from daily_attempts
         const userRes = await pool.query(
           `WITH current_cycle AS (
              SELECT start_date, end_date FROM weekly_competitions WHERE status = 'ACTIVE' LIMIT 1
@@ -100,6 +116,26 @@ export class LeaderboardService {
             participationDays: parseInt(userRes.rows[0].days || '0', 10),
             isCurrentUser: true,
           };
+        } else {
+          // Check weekly_leaderboard for this player
+          const wlRes = await pool.query(
+            `SELECT wl.rank, wl.total_7day_score, wl.total_response_time_ms::numeric / 1000 as total_time
+             FROM weekly_leaderboard wl
+             JOIN weekly_competitions wc ON wl.competition_id = wc.competition_id
+             WHERE wc.status = 'ACTIVE' AND wl.player_msisdn = $1
+             LIMIT 1`,
+            [norm]
+          );
+          if (wlRes.rows.length > 0) {
+            currentUserPosition = {
+              rank: wlRes.rows[0].rank,
+              maskedMsisdn: maskMsisdn(norm),
+              sevenDayScore: parseInt(wlRes.rows[0].total_7day_score || '0', 10),
+              totalResponseTime: parseFloat(Number(wlRes.rows[0].total_time || 0).toFixed(2)),
+              participationDays: 7,
+              isCurrentUser: true,
+            };
+          }
         }
       }
     }

@@ -1,6 +1,7 @@
 import { FastifyInstance } from 'fastify';
 import { DailyChallengeEngine } from '../services/dailyChallengeEngine.js';
 import { AuthoritativeGameEngine } from '../services/authoritativeGameEngine.js';
+import { CompetitionLifecycleService } from '../services/competitionLifecycleService.js';
 
 export async function dailyChallengeRoutes(fastify: FastifyInstance) {
   /**
@@ -9,6 +10,9 @@ export async function dailyChallengeRoutes(fastify: FastifyInstance) {
   fastify.get('/status', async (req, reply) => {
     const query = (req.query || {}) as { msisdn?: string };
     const msisdn = query.msisdn || '251965112122';
+
+    // Synchronize daily challenge windows in EAT
+    await CompetitionLifecycleService.syncDailyChallengesStatus();
 
     const check = await DailyChallengeEngine.checkEligibility(msisdn);
     return reply.send({

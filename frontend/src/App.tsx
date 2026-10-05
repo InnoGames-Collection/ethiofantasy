@@ -14,6 +14,7 @@ import {
   loadUserProfile,
   saveUserProfile,
   loadDailyChallengeState,
+  fetchDailyChallengeState,
   recordDailyChallengeScore,
   startDailyChallenge,
   getTop10Leaderboard,
@@ -360,7 +361,10 @@ export default function App() {
     };
     setUserProfile(updated);
     saveUserProfile(updated);
-    setDailyChallengeState(loadDailyChallengeState(msisdn));
+    fetchDailyChallengeState(msisdn).then(setDailyChallengeState);
+    fetchTop10Leaderboard(msisdn).then((info) => {
+      if (info && info.top10) setLeaderboardInfo(info);
+    });
     setCurrentScreen('MAIN');
     setActiveNavTab('HOME');
   };
@@ -371,11 +375,16 @@ export default function App() {
   );
 
   useEffect(() => {
-    fetchTop10Leaderboard(userProfile.msisdn).then((info) => {
-      if (info && info.top10 && info.top10.length > 0) {
-        setLeaderboardInfo(info);
-      }
-    });
+    if (userProfile.msisdn) {
+      fetchDailyChallengeState(userProfile.msisdn).then((state) => {
+        if (state) setDailyChallengeState(state);
+      });
+      fetchTop10Leaderboard(userProfile.msisdn).then((info) => {
+        if (info && info.top10) {
+          setLeaderboardInfo(info);
+        }
+      });
+    }
   }, [userProfile.msisdn, activeNavTab, dailyChallengeState.sevenDayTotal]);
 
   const currentLevelNumber = Math.min(100, Math.max(...userProgress.unlockedLevelIds, 1));
@@ -387,7 +396,7 @@ export default function App() {
         {currentScreen === 'SPLASH' && (
           <SplashScreen
             onComplete={() => {
-              setCurrentScreen('MAIN');
+              setCurrentScreen(userProfile.isLoggedIn ? 'MAIN' : 'LOGIN');
             }}
           />
         )}

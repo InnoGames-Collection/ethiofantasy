@@ -52,9 +52,10 @@ export const AdminUsersPage: React.FC<AdminUsersPageProps> = ({ currentRole }) =
     try {
       setLoading(true);
       const list = await api.getAdminUsers();
-      setAdmins(list);
+      setAdmins(Array.isArray(list) ? list : (list as any)?.admins || []);
     } catch (err: any) {
       setError(err.message);
+      setAdmins([]);
     } finally {
       setLoading(false);
     }

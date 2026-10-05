@@ -103,7 +103,7 @@ export const LeaderboardTab: React.FC<LeaderboardTabProps> = ({
                   {/* 7-Day Score */}
                   <div className="text-right">
                     <span className="text-xs font-black text-blue-900 tabular-nums">
-                      {entry.sevenDayScore.toLocaleString()}{' '}
+                      {(entry.sevenDayScore ?? (entry as any).score ?? 0).toLocaleString()}{' '}
                       <span className="text-[10px] text-blue-700 font-bold">pts</span>
                     </span>
                   </div>
@@ -134,7 +134,7 @@ export const LeaderboardTab: React.FC<LeaderboardTabProps> = ({
 
           <div className="text-right">
             <span className="text-sm font-black text-blue-950 tabular-nums">
-              {userPosition.sevenDayScore.toLocaleString()}{' '}
+              {(userPosition.sevenDayScore ?? (userPosition as any).score ?? 0).toLocaleString()}{' '}
               <span className="text-xs text-blue-700 font-bold">pts</span>
             </span>
           </div>

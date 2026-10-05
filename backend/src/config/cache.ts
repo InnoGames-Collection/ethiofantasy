@@ -2,10 +2,12 @@ import { Redis } from 'ioredis';
 import { env } from './env.js';
 
 export const cache = new Redis(env.VALKEY_URL, {
-  maxRetriesPerRequest: 3,
+  maxRetriesPerRequest: 1,
+  enableOfflineQueue: false,
+  connectTimeout: 500,
   retryStrategy(times) {
-    const delay = Math.min(times * 100, 2000);
-    return delay;
+    if (times > 2) return null;
+    return 1000;
   },
   lazyConnect: true,
 });

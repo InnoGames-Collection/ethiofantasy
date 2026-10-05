@@ -31,9 +31,10 @@ export const AuditLogPage: React.FC = () => {
         dateFrom: dateFrom || undefined,
         dateTo: dateTo || undefined,
       });
-      setLogs(data);
+      setLogs(Array.isArray(data) ? data : (data as any)?.logs || []);
     } catch (err: any) {
       console.error(err);
+      setLogs([]);
     } finally {
       setLoading(false);
     }
@@ -43,14 +44,15 @@ export const AuditLogPage: React.FC = () => {
     loadLogs();
   }, [actionFilter, objectFilter]);
 
-  const filteredLogs = logs.filter((l) => {
+  const safeLogs = Array.isArray(logs) ? logs : [];
+  const filteredLogs = safeLogs.filter((l) => {
     if (!searchReason) return true;
     const q = searchReason.toLowerCase();
     return (
-      l.reason.toLowerCase().includes(q) ||
-      l.adminName.toLowerCase().includes(q) ||
-      l.action.toLowerCase().includes(q) ||
-      l.objectId.toLowerCase().includes(q)
+      (l.reason || '').toLowerCase().includes(q) ||
+      (l.adminName || '').toLowerCase().includes(q) ||
+      (l.action || '').toLowerCase().includes(q) ||
+      (l.objectId || '').toLowerCase().includes(q)
     );
   });
 

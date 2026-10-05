@@ -1,76 +1,72 @@
 import cron from 'node-cron';
-import { pool } from '../config/database.js';
-import { cache } from '../config/cache.js';
+import { CompetitionLifecycleService } from '../services/competitionLifecycleService.js';
 
 export function startCronJobs() {
-  console.log('[EthioFantasy Cron] Initializing schedulers with distributed coordination...');
+  console.log('[EthioFantasy Cron] Initializing EAT schedulers (Africa/Addis_Ababa, UTC+3)...');
 
-  // Weekly competition rollover: Runs every Monday at 00:00:00 East Africa Time
-  cron.schedule('0 0 * * 1', async () => {
-    console.log('[EthioFantasy Cron] Settling weekly 7-day competition cycle...');
-    const lockKey = 'lock:cron:weekly_rollover';
-    let hasLock = false;
+  // Run immediate startup synchronization
+  CompetitionLifecycleService.syncDailyChallengesStatus()
+    .then(() => console.log('[EthioFantasy Cron] Daily challenge status synchronized with EAT calendar.'))
+    .catch((err) => console.error('[EthioFantasy Cron] Initial daily sync failed:', err));
 
-    try {
-      // 1. Attempt to acquire Redis distributed lock for 60 seconds
-      const acquired = await cache.set(lockKey, '1', 'PX', 60000, 'NX');
-      hasLock = Boolean(acquired);
-    } catch (err) {
-      console.warn('[Cron] Redis lock check failed, falling back to PostgreSQL advisory lock');
-    }
+  CompetitionLifecycleService.syncWeeklyCompetitionStatus()
+    .then(() => console.log('[EthioFantasy Cron] Weekly competition cycles synchronized with EAT calendar.'))
+    .catch((err) => console.error('[EthioFantasy Cron] Initial weekly sync failed:', err));
 
-    const client = await pool.connect();
-    try {
-      // 2. PostgreSQL Advisory Lock as secondary safeguard
-      const advisoryLockRes = await client.query(`SELECT pg_try_advisory_lock(74152026) as acquired`);
-      const pgLockAcquired = Boolean(advisoryLockRes.rows[0]?.acquired);
-
-      if (!hasLock && !pgLockAcquired) {
-        console.log('[EthioFantasy Cron] Another replica is currently handling the competition rollover. Skipping.');
-        return;
+  // 1. Daily Challenge Rollover:
+  // Closes today's challenge window at 23:59:50 EAT and ensures tomorrow's challenge is ready
+  cron.schedule(
+    '59 23 * * *',
+    async () => {
+      console.log('[EthioFantasy Cron] Daily challenge cutoff reached (23:59 EAT). Closing active window...');
+      try {
+        await CompetitionLifecycleService.syncDailyChallengesStatus();
+      } catch (err) {
+        console.error('[EthioFantasy Cron] Error during daily challenge cutoff sync:', err);
       }
+    },
+    { timezone: 'Africa/Addis_Ababa' }
+  );
 
-      await client.query('BEGIN');
-
-      // Find active cycle
-      const activeRes = await client.query(
-        `SELECT * FROM weekly_competitions WHERE status = 'ACTIVE' LIMIT 1 FOR UPDATE`
-      );
-
-      if (activeRes.rows.length > 0) {
-        const current = activeRes.rows[0];
-
-        // Mark finalized
-        await client.query(
-          `UPDATE weekly_competitions SET status = 'FINALIZED' WHERE competition_id = $1`,
-          [current.competition_id]
-        );
-
-        // Create next cycle
-        const nextCycle = current.cycle_number + 1;
-        await client.query(
-          `INSERT INTO weekly_competitions (competition_id, cycle_number, start_date, end_date, status, prize_pool_etb)
-           VALUES ($1, $2, CURRENT_DATE, CURRENT_DATE + INTERVAL '7 days', 'ACTIVE', 50000.00)`,
-          [`comp_cycle_2026_w${nextCycle}`, nextCycle]
-        );
-
-        await client.query('COMMIT');
-        console.log(`[EthioFantasy Cron] Finalized cycle ${current.cycle_number}, activated cycle ${nextCycle}`);
-
-        // Invalidate cached leaderboard
-        try {
-          await cache.del('leaderboard:active_cycle:top10');
-        } catch (e) {}
-      } else {
-        await client.query('ROLLBACK');
+  cron.schedule(
+    '1 0 * * *',
+    async () => {
+      console.log('[EthioFantasy Cron] New daily challenge window opening (00:01 EAT). Ensuring seed questions...');
+      try {
+        await CompetitionLifecycleService.syncDailyChallengesStatus();
+      } catch (err) {
+        console.error('[EthioFantasy Cron] Error during new day initialization:', err);
       }
+    },
+    { timezone: 'Africa/Addis_Ababa' }
+  );
 
-      await client.query(`SELECT pg_advisory_unlock(74152026)`);
-    } catch (err) {
-      await client.query('ROLLBACK');
-      console.error('[EthioFantasy Cron] Error during competition rollover:', err);
-    } finally {
-      client.release();
-    }
-  });
+  // 2. Weekly Competition Rollover:
+  // Sunday 23:59:50 EAT: Closes 7-day tournament, calculates ACID deterministic leaderboard, awards prizes
+  cron.schedule(
+    '59 23 * * 0',
+    async () => {
+      console.log('[EthioFantasy Cron] Sunday 23:59 EAT reached. Settling 7-day championship tournament...');
+      try {
+        await CompetitionLifecycleService.syncWeeklyCompetitionStatus();
+      } catch (err) {
+        console.error('[EthioFantasy Cron] Error during Sunday tournament settlement:', err);
+      }
+    },
+    { timezone: 'Africa/Addis_Ababa' }
+  );
+
+  // Monday 00:00:00 EAT: Activates new ISO week tournament cycle
+  cron.schedule(
+    '0 0 * * 1',
+    async () => {
+      console.log('[EthioFantasy Cron] Monday 00:00 EAT reached. Activating new weekly ISO tournament cycle...');
+      try {
+        await CompetitionLifecycleService.syncWeeklyCompetitionStatus();
+      } catch (err) {
+        console.error('[EthioFantasy Cron] Error activating Monday tournament cycle:', err);
+      }
+    },
+    { timezone: 'Africa/Addis_Ababa' }
+  );
 }

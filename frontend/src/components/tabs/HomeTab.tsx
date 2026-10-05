@@ -24,6 +24,7 @@ import {
   Eye,
   Lock,
   ImageIcon,
+  Clock,
 } from 'lucide-react';
 import { OFFICIAL_FAQ_ITEMS, OFFICIAL_TERMS_SECTIONS } from '../../data/ethioFantasyLegal';
 
@@ -63,6 +64,29 @@ export const HomeTab: React.FC<HomeTabProps> = ({
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [activeModal, setActiveModal] = useState<HomeModalType>(null);
   const [expandedFaqIndex, setExpandedFaqIndex] = useState<number | null>(0);
+
+  // Real-time countdown to 23:59:59 EAT daily cutoff
+  const [timeUntilCutoff, setTimeUntilCutoff] = useState('');
+
+  React.useEffect(() => {
+    const updateCountdown = () => {
+      const now = new Date();
+      const utc = now.getTime() + now.getTimezoneOffset() * 60000;
+      const eatNow = new Date(utc + 3 * 3600000);
+      const eatMidnight = new Date(eatNow);
+      eatMidnight.setHours(23, 59, 59, 999);
+      const diffMs = Math.max(0, eatMidnight.getTime() - eatNow.getTime());
+      const h = Math.floor(diffMs / 3600000);
+      const m = Math.floor((diffMs % 3600000) / 60000);
+      const s = Math.floor((diffMs % 60000) / 1000);
+      setTimeUntilCutoff(
+        `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
+      );
+    };
+    updateCountdown();
+    const interval = setInterval(updateCountdown, 1000);
+    return () => clearInterval(interval);
+  }, []);
 
   return (
     <div className="w-full flex flex-col space-y-4 pb-20 select-none">
@@ -291,10 +315,10 @@ export const HomeTab: React.FC<HomeTabProps> = ({
             <div className="space-y-2">
               <div className="flex items-center justify-between p-2.5 rounded-xl bg-black/20 border border-white/15 text-xs">
                 <span className="text-slate-300 font-bold uppercase text-[10px] tracking-wider">
-                  Next Challenge:
+                  Next Daily Challenge:
                 </span>
-                <span className="font-black text-amber-300 uppercase tracking-wide text-xs">
-                  TOMORROW
+                <span className="font-mono font-black text-amber-300 uppercase tracking-wide text-xs">
+                  Opens in {timeUntilCutoff} (00:00 EAT)
                 </span>
               </div>
               <button
@@ -323,6 +347,15 @@ export const HomeTab: React.FC<HomeTabProps> = ({
             </div>
           ) : (
             <div className="space-y-2">
+              <div className="flex items-center justify-between p-2 rounded-xl bg-black/20 border border-white/15 text-xs">
+                <span className="text-emerald-100 font-bold uppercase text-[10px] tracking-wider flex items-center gap-1">
+                  <Clock className="w-3.5 h-3.5 text-amber-300" />
+                  <span>Closes Tonight:</span>
+                </span>
+                <span className="font-mono font-black text-amber-300 text-xs">
+                  {timeUntilCutoff} (23:59:59 EAT)
+                </span>
+              </div>
               <button
                 onClick={() => {
                   sound.playTap();
@@ -344,20 +377,20 @@ export const HomeTab: React.FC<HomeTabProps> = ({
           <div className="flex items-center gap-2">
             <Calendar className="w-4 h-4 text-emerald-600" />
             <span className="text-xs font-black uppercase text-slate-900 tracking-wider">
-              7-DAY CHALLENGE
+              7-DAY CHAMPIONSHIP
             </span>
           </div>
 
           <span className="text-[11px] font-black px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
-            Day {dailyState.currentDayInCycle} of 7
+            Day {dailyState.currentDayInCycle} of 7 (EAT)
           </span>
         </div>
 
         {/* 7-Day progress bar indicator */}
         <div className="w-full">
           <div className="flex justify-between text-[10px] font-bold text-slate-500 mb-1">
-            <span>Cycle Progress</span>
-            <span>{7 - dailyState.currentDayInCycle} days remaining</span>
+            <span>Cycle Window (Mon–Sun)</span>
+            <span className="font-medium text-emerald-700">Closes Sunday 23:59:59 EAT</span>
           </div>
           <div className="w-full h-2 rounded-full bg-slate-100 overflow-hidden">
             <div
