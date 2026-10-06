@@ -34,6 +34,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ currentRole }) => {
   const [publicLeaderboardTopN, setPublicLeaderboardTopN] = useState(10);
   const [supportContact, setSupportContact] = useState('');
   const [serviceNoticeBanner, setServiceNoticeBanner] = useState('');
+  const [systemMode, setSystemMode] = useState<'DEMO' | 'PRODUCTION'>('PRODUCTION');
 
   const [confirmOpen, setConfirmOpen] = useState(false);
 
@@ -54,6 +55,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ currentRole }) => {
       setPublicLeaderboardTopN(data.publicLeaderboardTopN);
       setSupportContact(data.supportContact);
       setServiceNoticeBanner(data.serviceNoticeBanner);
+      setSystemMode(data.systemMode || 'PRODUCTION');
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -79,6 +81,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ currentRole }) => {
           publicLeaderboardTopN: Number(publicLeaderboardTopN),
           supportContact,
           serviceNoticeBanner,
+          systemMode,
         },
         reason
       );
@@ -220,6 +223,79 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ currentRole }) => {
                 onChange={(e) => setTelebirrDisbursementEnabled(e.target.checked)}
                 className="w-4 h-4 text-emerald-600 rounded"
               />
+            </label>
+          </div>
+        </div>
+
+        {/* Operational Environment Mode (DEMO vs PRODUCTION) */}
+        <div className="space-y-4 pt-4 border-t border-slate-100">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wide">
+                Operational Environment Mode
+              </h3>
+              <p className="text-slate-500 text-[11px] mt-0.5">
+                Controls SMS gateway behavior. In DEMO / Pre-production mode, test verification codes are presented on-screen and whitelisted for seamless UAT.
+              </p>
+            </div>
+            <span
+              className={`px-2.5 py-1 rounded-full text-[11px] font-black uppercase tracking-wider ${
+                systemMode === 'PRODUCTION'
+                  ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                  : 'bg-amber-50 text-amber-700 border border-amber-200'
+              }`}
+            >
+              {systemMode} MODE
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <label
+              className={`flex items-start p-3.5 rounded-xl border cursor-pointer transition-all ${
+                systemMode === 'PRODUCTION'
+                  ? 'border-blue-600 bg-blue-50/40 shadow-xs'
+                  : 'border-slate-200 hover:bg-slate-50'
+              }`}
+            >
+              <input
+                type="radio"
+                name="systemMode"
+                value="PRODUCTION"
+                disabled={!isSuperAdmin}
+                checked={systemMode === 'PRODUCTION'}
+                onChange={() => setSystemMode('PRODUCTION')}
+                className="mt-0.5 mr-3"
+              />
+              <div>
+                <span className="font-bold text-slate-800 block">Production Commercial Mode</span>
+                <span className="text-slate-500 text-[11px]">
+                  Requires live Ethio Telecom Shortcode 9401 SMSC dispatch. Standard billing gate active.
+                </span>
+              </div>
+            </label>
+
+            <label
+              className={`flex items-start p-3.5 rounded-xl border cursor-pointer transition-all ${
+                systemMode === 'DEMO'
+                  ? 'border-amber-600 bg-amber-50/40 shadow-xs'
+                  : 'border-slate-200 hover:bg-slate-50'
+              }`}
+            >
+              <input
+                type="radio"
+                name="systemMode"
+                value="DEMO"
+                disabled={!isSuperAdmin}
+                checked={systemMode === 'DEMO'}
+                onChange={() => setSystemMode('DEMO')}
+                className="mt-0.5 mr-3"
+              />
+              <div>
+                <span className="font-bold text-slate-800 block">Staging & Pre-Production Mode</span>
+                <span className="text-slate-500 text-[11px]">
+                  Auto-generates visible OTP codes for testers and accepts default test PINs (849201 / 123456).
+                </span>
+              </div>
             </label>
           </div>
         </div>

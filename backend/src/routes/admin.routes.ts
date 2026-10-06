@@ -1243,8 +1243,9 @@ export async function adminRoutes(fastify: FastifyInstance) {
            daily_subscription_price_birr = $4, daily_challenge_enabled = $5,
            weekly_competition_enabled = $6, auto_finalize_winners = $7,
            telebirr_disbursement_enabled = $8, public_leaderboard_top_n = $9,
-           support_contact = $10, service_notice_banner = $11, updated_at = NOW(),
-           updated_by = $12
+           support_contact = $10, service_notice_banner = $11,
+           system_mode = COALESCE($12, system_mode), updated_at = NOW(),
+           updated_by = $13
        WHERE id = 1`,
       [
         settings.serviceName,
@@ -1258,6 +1259,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
         settings.publicLeaderboardTopN,
         settings.supportContact,
         settings.serviceNoticeBanner,
+        settings.systemMode || null,
         admin,
       ]
     );

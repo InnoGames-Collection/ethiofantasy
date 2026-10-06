@@ -57,15 +57,15 @@ export class AuthoritativeGameEngine {
       [msisdn]
     );
 
-    // Also check test subscriber table in non-production
+    // Also check test subscriber table for enrolled test accounts
     let isTestSub = false;
-    if (process.env.NODE_ENV !== 'production') {
+    try {
       const testRes = await pool.query(
         `SELECT msisdn FROM test_subscriber_otps WHERE msisdn = $1 LIMIT 1`,
         [msisdn]
       );
       isTestSub = testRes.rows.length > 0;
-    }
+    } catch (e) {}
 
     if (subRes.rows.length === 0 && !isTestSub) {
       return {

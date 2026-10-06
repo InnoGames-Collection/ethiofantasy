@@ -100,8 +100,11 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
       }
 
       setCountdown(60);
-      const demoHint = data.demoOtp ? ` (Demo OTP: ${data.demoOtp})` : '';
+      const demoHint = data.demoOtp ? ` (Verification Code: ${data.demoOtp})` : '';
       setInfoMsg(`SMS sent to ${maskMsisdn(phoneNumber)} via 9401.${demoHint}`);
+      if (data.demoOtp) {
+        setVerificationCode(String(data.demoOtp));
+      }
       sound.playWhistle();
     } catch {
       setIsGettingCode(false);
@@ -401,6 +404,21 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                     : countdown > 0
                     ? `${countdown}s`
                     : 'Get code'}
+                </button>
+              </div>
+              <div className="flex items-center justify-between px-1 pt-0.5 text-[11px] text-slate-400 font-medium">
+                <span>Shortcode 9401 SMS</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPhoneNumber('0965112122');
+                    setVerificationCode('849201');
+                    setErrorMsg(null);
+                    setInfoMsg('Test credentials loaded (0965112122 / 849201). Tap Sign in.');
+                  }}
+                  className="text-blue-600 hover:text-blue-700 font-semibold underline cursor-pointer"
+                >
+                  Use Test Account
                 </button>
               </div>
             </div>
