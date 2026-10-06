@@ -30,6 +30,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ currentRole }) => {
   const [dailyPrice, setDailyPrice] = useState(2);
   const [dailyChallengeEnabled, setDailyChallengeEnabled] = useState(true);
   const [weeklyCompetitionEnabled, setWeeklyCompetitionEnabled] = useState(true);
+  const [autoFinalizeWinners, setAutoFinalizeWinners] = useState(false);
   const [telebirrDisbursementEnabled, setTelebirrDisbursementEnabled] = useState(true);
   const [publicLeaderboardTopN, setPublicLeaderboardTopN] = useState(10);
   const [supportContact, setSupportContact] = useState('');
@@ -51,6 +52,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ currentRole }) => {
       setDailyPrice(data.dailySubscriptionPriceBirr);
       setDailyChallengeEnabled(data.dailyChallengeEnabled);
       setWeeklyCompetitionEnabled(data.weeklyCompetitionEnabled);
+      setAutoFinalizeWinners(Boolean(data.autoFinalizeWinners));
       setTelebirrDisbursementEnabled(data.telebirrDisbursementEnabled);
       setPublicLeaderboardTopN(data.publicLeaderboardTopN);
       setSupportContact(data.supportContact);
@@ -77,6 +79,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ currentRole }) => {
           dailySubscriptionPriceBirr: Number(dailyPrice),
           dailyChallengeEnabled,
           weeklyCompetitionEnabled,
+          autoFinalizeWinners,
           telebirrDisbursementEnabled,
           publicLeaderboardTopN: Number(publicLeaderboardTopN),
           supportContact,
@@ -208,6 +211,20 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ currentRole }) => {
                 checked={weeklyCompetitionEnabled}
                 onChange={(e) => setWeeklyCompetitionEnabled(e.target.checked)}
                 className="w-4 h-4 text-blue-600 rounded"
+              />
+            </label>
+
+            <label className="flex items-center justify-between p-3 rounded-lg border border-slate-200 hover:bg-slate-50 cursor-pointer">
+              <div>
+                <span className="font-semibold text-slate-800 block">Automatic Winner Finalization</span>
+                <span className="text-slate-400 text-[11px]">Automatically finalize weekly cycle winners upon cycle completion without manual auditor trigger</span>
+              </div>
+              <input
+                type="checkbox"
+                disabled={!isSuperAdmin}
+                checked={autoFinalizeWinners}
+                onChange={(e) => setAutoFinalizeWinners(e.target.checked)}
+                className="w-4 h-4 text-purple-600 rounded"
               />
             </label>
 
