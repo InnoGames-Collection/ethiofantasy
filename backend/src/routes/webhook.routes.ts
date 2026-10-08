@@ -178,10 +178,9 @@ export async function webhookRoutes(fastify: FastifyInstance) {
   };
 
   /**
-   * Inbound Ethio Telecom Subscription Webhook (Routes supported: /subscription and /webhooks/subscription)
+   * Inbound Ethio Telecom Subscription Webhook
    */
   fastify.post('/subscription', handleSubscriptionWebhook);
-  fastify.post('/webhooks/subscription', handleSubscriptionWebhook);
 
   /**
    * Outbound MT SMS Dispatch Route (for OTPs, notifications, prize disbursements)
@@ -218,9 +217,6 @@ export async function webhookRoutes(fastify: FastifyInstance) {
    * Inbound Delivery Status Callback (DLR)
    */
   fastify.post('/dlr', async (req, reply) => {
-    return reply.send({ received: true });
-  });
-  fastify.post('/webhooks/dlr', async (req, reply) => {
     return reply.send({ received: true });
   });
 }
