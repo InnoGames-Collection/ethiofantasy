@@ -1,4 +1,4 @@
-import { UserProgress, Question } from '../types/quiz';
+import { UserProgress, Question, LevelData } from '../types/quiz';
 
 export const DEFAULT_PROGRESS: UserProgress = {
   score: 0,
@@ -45,6 +45,38 @@ export async function fetchUserProgressFromDb(msisdn?: string): Promise<UserProg
   }
 
   return { ...DEFAULT_PROGRESS };
+}
+
+/**
+ * Loads the 100 Championship Levels directly from PostgreSQL via API
+ */
+export async function fetchLevelsFromDb(msisdn?: string): Promise<LevelData[]> {
+  try {
+    const url = msisdn
+      ? `/api/quiz/levels?msisdn=${encodeURIComponent(msisdn)}`
+      : '/api/quiz/levels';
+    const res = await fetch(url);
+    if (res.ok) {
+      const data = await res.json();
+      const rawLevels = Array.isArray(data) ? data : data.levels;
+      if (Array.isArray(rawLevels) && rawLevels.length > 0) {
+        return rawLevels.map((lvl: any) => ({
+          id: Number(lvl.id || lvl.levelNumber),
+          levelNumber: Number(lvl.levelNumber || lvl.id),
+          title: lvl.title,
+          subtitle: lvl.subtitle || lvl.description,
+          category: lvl.categoryTitle || lvl.category || 'FOOTBALL BASICS',
+          totalQuestions: lvl.totalQuestions || 10,
+          iconType: lvl.iconType || 'ball',
+          accentColor: lvl.accentColor || 'from-blue-600 to-indigo-600',
+          questions: [],
+        }));
+      }
+    }
+  } catch (err) {
+    console.warn('[StorageService] Error fetching levels from database:', err);
+  }
+  return [];
 }
 
 /**
@@ -98,4 +130,28 @@ export async function fetchLevelQuestionsFromDb(levelId: number): Promise<Questi
   }
 
   return [];
+}
+
+/**
+ * Submits an answer for server-authoritative level question grading
+ */
+export async function submitLevelAnswerToDb(params: {
+  levelId: number;
+  questionId: string;
+  selectedIndex: number | null;
+  elapsedSeconds?: number;
+}): Promise<{ success: boolean; isCorrect: boolean; pointsEarned: number; correctAnswerIndex?: number }> {
+  try {
+    const res = await fetch('/api/quiz/level/submit-answer', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params),
+    });
+    if (res.ok) {
+      return await res.json();
+    }
+  } catch (err) {
+    console.warn('[StorageService] Error submitting answer to server:', err);
+  }
+  return { success: false, isCorrect: false, pointsEarned: 0 };
 }

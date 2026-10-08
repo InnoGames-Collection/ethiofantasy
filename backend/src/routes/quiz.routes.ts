@@ -1,5 +1,6 @@
 import { FastifyInstance } from 'fastify';
 import { pool } from '../config/database.js';
+import { cache } from '../config/cache.js';
 import { normalizeMsisdn } from '../services/dailyChallengeEngine.js';
 
 interface UserProgressDto {
@@ -125,7 +126,7 @@ export async function quizRoutes(fastify: FastifyInstance) {
     }
 
     const levels = levelsRes.rows.map((lvl) => ({
-      id: String(lvl.id),
+      id: lvl.id,
       levelNumber: lvl.id,
       chapterName: lvl.chapter_name,
       categoryTitle: lvl.category_title,
@@ -142,6 +143,7 @@ export async function quizRoutes(fastify: FastifyInstance) {
       status: 'ACTIVE',
       stars: progressMap[lvl.id]?.stars || 0,
       score: progressMap[lvl.id]?.score || 0,
+      unlocked: lvl.id === 1 || (progressMap[lvl.id - 1]?.stars || 0) >= 2,
     }));
 
     if ((req.query as any)?.wrap === 'true') {
@@ -167,6 +169,7 @@ export async function quizRoutes(fastify: FastifyInstance) {
 
   /**
    * 3. Get 10 dynamically randomized questions for a Championship Level from PostgreSQL
+   * SERVER-AUTHORITATIVE: ZERO correct answer keys or explanations sent to client!
    */
   fastify.get('/level/:levelId/questions', async (req, reply) => {
     const params = req.params as { levelId: string };
@@ -183,7 +186,7 @@ export async function quizRoutes(fastify: FastifyInstance) {
     // Query 10 random questions from quiz_questions in DB
     let qRes = await pool.query(
       `SELECT id, category, question_text, prompt_en, options, options_en,
-              correct_index, explanation, type, image_identifier
+              correct_index, explanation, type, image_identifier, image_url
        FROM quiz_questions
        WHERE is_active = TRUE AND pool = 'LEVEL_BASED' AND category = ANY($1)
        ORDER BY RANDOM()
@@ -194,7 +197,7 @@ export async function quizRoutes(fastify: FastifyInstance) {
     if (qRes.rows.length < 10) {
       qRes = await pool.query(
         `SELECT id, category, question_text, prompt_en, options, options_en,
-                correct_index, explanation, type, image_identifier
+                correct_index, explanation, type, image_identifier, image_url
          FROM quiz_questions
          WHERE is_active = TRUE AND pool = 'LEVEL_BASED'
          ORDER BY RANDOM()
@@ -202,7 +205,9 @@ export async function quizRoutes(fastify: FastifyInstance) {
       );
     }
 
-    const questions = qRes.rows.map((row, idx) => {
+    const questions = [];
+
+    for (const [idx, row] of qRes.rows.entries()) {
       let rawOptions: string[] = [];
       if (Array.isArray(row.options)) rawOptions = [...row.options];
       else if (Array.isArray(row.options_en)) rawOptions = [...row.options_en];
@@ -226,17 +231,29 @@ export async function quizRoutes(fastify: FastifyInstance) {
 
       const newCorrectIndex = shuffledOptions.indexOf(correctOptionText);
 
-      return {
-        id: `lvl_${levelId}_q_${idx + 1}_${row.id}`,
+      // Cache answer key in Redis (TTL: 30 minutes)
+      try {
+        await cache.set(
+          `level_answer:${levelId}:${row.id}`,
+          String(newCorrectIndex >= 0 ? newCorrectIndex : 0),
+          'EX',
+          1800
+        );
+      } catch (e) {}
+
+      // Sanitized Question Payload: ZERO correct answers or explanations leaked!
+      questions.push({
+        id: row.id,
+        levelNumber: levelId,
+        questionNumber: idx + 1,
         questionText: row.question_text || row.prompt_en || `Level ${levelId} Question ${idx + 1}`,
         categoryTitle: catTitle,
         type: row.type || 'trivia',
         imageType: row.image_identifier || 'ball',
+        imageUrl: row.image_url || undefined,
         options: shuffledOptions,
-        correctAnswerIndex: newCorrectIndex >= 0 ? newCorrectIndex : 0,
-        explanation: row.explanation || '',
-      };
-    });
+      });
+    }
 
     return reply.send({
       success: true,
@@ -247,10 +264,52 @@ export async function quizRoutes(fastify: FastifyInstance) {
   });
 
   /**
-   * 4. Submit completion of a level to PostgreSQL and return updated progress
+   * 4. Server-Authoritative Question Grading for Championship Levels
+   */
+  fastify.post('/level/submit-answer', async (req, reply) => {
+    const { levelId, questionId, selectedIndex, elapsedSeconds } = req.body as {
+      levelId: number;
+      questionId: string;
+      selectedIndex: number | null;
+      elapsedSeconds?: number;
+    };
+
+    if (!questionId || levelId === undefined) {
+      return reply.status(400).send({ success: false, error: 'Missing questionId or levelId' });
+    }
+
+    let answerKey: number | null = null;
+    try {
+      const cached = await cache.get(`level_answer:${levelId}:${questionId}`);
+      if (cached !== null) {
+        answerKey = parseInt(cached, 10);
+      }
+    } catch {}
+
+    if (answerKey === null) {
+      const qDb = await pool.query(`SELECT correct_index FROM quiz_questions WHERE id = $1`, [questionId]);
+      answerKey = qDb.rows[0]?.correct_index ?? 0;
+    }
+
+    const elapsed = Math.max(0.01, typeof elapsedSeconds === 'number' ? elapsedSeconds : 10.0);
+    const isTimeout = elapsed > 62.0;
+    const isCorrect = !isTimeout && selectedIndex !== null && selectedIndex === answerKey;
+    const points = isCorrect ? (1 + (elapsed <= 20.0 ? 1 : 0)) : 0;
+
+    return reply.send({
+      success: true,
+      isCorrect,
+      pointsEarned: points,
+      correctAnswerIndex: answerKey, // Reveal answer ONLY after submission!
+    });
+  });
+
+  /**
+   * 5. Submit completion of a level to PostgreSQL and return updated progress
+   * Enforces server bounds on stars (0-3) and scores (max 20)
    */
   fastify.post('/submit-level', async (req, reply) => {
-    const { msisdn, levelId, stars, score, percentage } = req.body as {
+    const { msisdn, levelId, stars, score } = req.body as {
       msisdn: string;
       levelId: number;
       stars: number;
@@ -263,6 +322,10 @@ export async function quizRoutes(fastify: FastifyInstance) {
     }
 
     const norm = normalizeMsisdn(msisdn);
+    const safeLevelId = Math.max(1, Math.min(100, parseInt(String(levelId), 10) || 1));
+    const safeStars = Math.max(0, Math.min(3, parseInt(String(stars), 10) || 0));
+    const safeScore = Math.max(0, Math.min(20, parseInt(String(score), 10) || 0));
+
     await pool.query(
       `INSERT INTO player_progress (player_msisdn, level_id, stars, score, completed_at)
        VALUES ($1, $2, $3, $4, NOW())
@@ -270,7 +333,7 @@ export async function quizRoutes(fastify: FastifyInstance) {
        DO UPDATE SET stars = GREATEST(player_progress.stars, $3),
                      score = GREATEST(player_progress.score, $4),
                      completed_at = NOW()`,
-      [norm, levelId, stars, score]
+      [norm, safeLevelId, safeStars, safeScore]
     );
 
     // Update player's aggregate stats in PostgreSQL
@@ -281,7 +344,7 @@ export async function quizRoutes(fastify: FastifyInstance) {
            best_score = GREATEST(best_score, $3),
            last_active_at = NOW()
        WHERE msisdn = $1`,
-      [norm, levelId, score]
+      [norm, safeStars >= 2 ? safeLevelId : safeLevelId - 1, safeScore]
     );
 
     // Fetch refreshed progress directly from PostgreSQL

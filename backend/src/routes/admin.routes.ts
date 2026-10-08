@@ -31,7 +31,7 @@ function formatDbDateStr(d: any): string {
 // ==============================================================================
 const PaginationQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
-  pageSize: z.coerce.number().int().min(1).max(100).default(25),
+  pageSize: z.coerce.number().int().min(1).max(1000).default(25),
   search: z.string().optional(),
   status: z.string().optional(),
   category: z.string().optional(),
@@ -101,6 +101,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
       );
     } catch (err) {
       req.log.error({ err }, '[Audit Log Error] Failed to write immutable admin audit entry');
+      throw new Error(`CRITICAL_AUDIT_FAILURE: State modification aborted because audit log could not be written: ${(err as any)?.message}`);
     }
   }
 
@@ -685,7 +686,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
     };
   });
 
-  fastify.post('/prizes/override', { preHandler: [verifySuperAdmin] }, async (req, reply) => {
+  fastify.post('/prizes/override', { preHandler: [verifyOperationsAdmin] }, async (req, reply) => {
     const body = (req.body || {}) as {
       msisdn: string;
       overridePrizeBirr: number;
@@ -1366,59 +1367,195 @@ export async function adminRoutes(fastify: FastifyInstance) {
     const reportType = query.type || 'WINNERS';
 
     if (reportType === 'DAILY_CHALLENGE') {
+      const params: any[] = [];
+      let where = 'WHERE 1=1';
+      if (query.dateFrom) {
+        params.push(query.dateFrom);
+        where += ` AND a.attempt_date >= $${params.length}::date`;
+      }
+      if (query.dateTo) {
+        params.push(query.dateTo);
+        where += ` AND a.attempt_date <= $${params.length}::date`;
+      }
+
       const res = await pool.query(
         `SELECT a.attempt_id, a.attempt_date, a.player_msisdn, a.score, a.total_response_time_ms, a.is_completed, a.submitted_at
          FROM daily_attempts a
+         ${where}
          ORDER BY a.attempt_date DESC, a.score DESC 
-         LIMIT 100`
+         LIMIT 200`,
+        params
       );
 
       return res.rows.map((r, idx) => ({
-        challengeDate:
-          r.attempt_date instanceof Date
-            ? r.attempt_date.toISOString().slice(0, 10)
-            : String(r.attempt_date).slice(0, 10),
-        challengeTitle: 'Daily Football Challenge',
+        challengeDate: formatDbDateStr(r.attempt_date),
         rank: idx + 1,
         maskedMsisdn: maskMsisdn(r.player_msisdn),
         score: r.score,
         timeSpent: `${((r.total_response_time_ms || 0) / 1000).toFixed(1)}s`,
         eligible: 'YES',
         prizeBirr: idx === 0 ? 1000 : idx === 1 ? 500 : idx === 2 ? 250 : 0,
-        isOverride: 'NO',
+        completed: r.is_completed ? 'YES' : 'NO',
         submittedAt: r.submitted_at ? r.submitted_at.toISOString() : getEatTimestampString(),
       }));
     }
 
     if (reportType === 'SUBSCRIPTIONS') {
       const res = await pool.query(
-        `SELECT * FROM subscriptions ORDER BY last_billed_at DESC LIMIT 100`
+        `SELECT * FROM subscriptions ORDER BY last_billed_at DESC LIMIT 200`
       );
       return res.rows.map((s) => ({
         msisdn: maskMsisdn(s.msisdn),
-        shortcode: s.shortcode,
+        shortcode: s.shortcode || '9401',
         status: s.status,
-        planType: s.plan_type,
-        priceEtb: parseFloat(s.price_etb),
-        lastBilledAt: s.last_billed_at,
-        nextBillingAt: s.next_billing_at,
+        planType: s.plan_type || 'DAILY_RECURRING',
+        priceBirr: parseFloat(s.price_etb || 2.0),
+        channel: s.channel || 'SMS_9401',
+        activatedAt: s.activated_at ? s.activated_at.toISOString() : getEatTimestampString(),
+        lastBilledAt: s.last_billed_at ? s.last_billed_at.toISOString() : getEatTimestampString(),
+        nextBillingAt: s.next_billing_at ? s.next_billing_at.toISOString() : getEatTimestampString(),
       }));
     }
 
-    // Default: Winners & Weekly Leaderboard Report
+    if (reportType === 'WEEKLY_COMPETITION') {
+      const res = await pool.query(
+        `SELECT wc.*,
+                COALESCE(lb.lb_count, 0)::int as participants_count,
+                COALESCE(lb.top_score, 0)::int as top_score
+         FROM weekly_competitions wc
+         LEFT JOIN (
+           SELECT competition_id,
+                  COUNT(*)::int as lb_count,
+                  MAX(total_7day_score)::int as top_score
+           FROM weekly_leaderboard
+           GROUP BY competition_id
+         ) lb ON wc.competition_id = lb.competition_id
+         ORDER BY wc.cycle_number DESC 
+         LIMIT 100`
+      );
+      return res.rows.map((row) => ({
+        competitionId: row.competition_id,
+        title: row.title || `Weekly Championship #${row.cycle_number}`,
+        periodLabel: row.period_label || `${row.start_date} to ${row.end_date}`,
+        startDate: formatDbDateStr(row.start_date),
+        endDate: formatDbDateStr(row.end_date),
+        status: row.status,
+        participantsCount: row.participants_count,
+        topScore: row.top_score,
+        prizePoolEtb: parseFloat(row.prize_pool_etb || 50000),
+      }));
+    }
+
+    if (reportType === 'PRIZES') {
+      const res = await pool.query(
+        `SELECT o.* 
+         FROM player_prize_overrides o 
+         ORDER BY o.created_at DESC 
+         LIMIT 200`
+      );
+      return res.rows.map((o) => ({
+        date: o.created_at ? o.created_at.toISOString().slice(0, 10) : getEatDateString(),
+        msisdn: maskMsisdn(o.player_msisdn),
+        context: o.context || 'WEEKLY_COMPETITION',
+        standardPrizeBirr: parseFloat(o.standard_prize_birr || 0),
+        overridePrizeBirr: parseFloat(o.override_prize_birr || 0),
+        status: o.status || 'PENDING_APPROVAL',
+        reason: o.reason,
+        adminName: o.admin_name || 'Admin',
+      }));
+    }
+
+    if (reportType === 'PARTICIPATION') {
+      const res = await pool.query(
+        `SELECT p.*, s.status as sub_status 
+         FROM players p 
+         LEFT JOIN subscriptions s ON p.msisdn = s.msisdn 
+         ORDER BY p.last_active_at DESC 
+         LIMIT 200`
+      );
+      return res.rows.map((p) => ({
+        msisdn: maskMsisdn(p.msisdn),
+        accountStatus: p.status,
+        subscriptionStatus: p.sub_status || 'INACTIVE',
+        currentLevel: p.current_level || 1,
+        bestScore: p.best_score || 0,
+        weeklyScore: p.weekly_score || 0,
+        dailyParticipations: p.daily_challenge_participations || 0,
+        telecomCircle: p.telecom_circle || 'ADDIS_ABABA',
+        registeredAt: p.created_at ? p.created_at.toISOString().slice(0, 10) : getEatDateString(),
+        lastActivity: p.last_active_at ? p.last_active_at.toISOString().slice(0, 10) : getEatDateString(),
+      }));
+    }
+
+    if (reportType === 'AUDIT') {
+      const params: any[] = [];
+      let where = 'WHERE 1=1';
+      if (query.dateFrom) {
+        params.push(query.dateFrom);
+        where += ` AND created_at >= $${params.length}::timestamptz`;
+      }
+      if (query.dateTo) {
+        params.push(query.dateTo);
+        where += ` AND created_at <= $${params.length}::timestamptz`;
+      }
+      const res = await pool.query(
+        `SELECT * FROM admin_audit_logs ${where} ORDER BY created_at DESC LIMIT 200`,
+        params
+      );
+      return res.rows.map((l) => ({
+        timestamp: l.created_at ? l.created_at.toISOString() : getEatTimestampString(),
+        adminName: l.admin_name || 'Admin',
+        adminRole: l.admin_role || 'SUPER_ADMIN',
+        action: l.action,
+        objectType: l.object_type,
+        objectId: l.object_id,
+        reason: l.reason,
+      }));
+    }
+
+    if (reportType === 'LEADERBOARD') {
+      const params: any[] = [];
+      let where = 'WHERE 1=1';
+      if (query.competitionId && query.competitionId !== 'ALL') {
+        params.push(query.competitionId);
+        where += ` AND competition_id = $${params.length}`;
+      }
+      const res = await pool.query(
+        `SELECT * FROM weekly_leaderboard ${where} ORDER BY rank ASC LIMIT 200`,
+        params
+      );
+      return res.rows.map((r) => ({
+        rank: r.rank,
+        msisdn: maskMsisdn(r.player_msisdn),
+        score: r.total_7day_score,
+        competitionId: r.competition_id,
+        prizeBirr: parseFloat(r.prize_etb || 0),
+        status: r.is_disbursed ? 'DISBURSED' : 'QUALIFIED',
+      }));
+    }
+
+    // Default: WINNERS Report
+    const params: any[] = [];
+    let compWhere = 'WHERE 1=1';
+    if (query.competitionId && query.competitionId !== 'ALL') {
+      params.push(query.competitionId);
+      compWhere += ` AND w.competition_id = $${params.length}`;
+    }
     const res = await pool.query(
       `SELECT w.*, c.title as comp_title, c.period_label 
        FROM weekly_leaderboard w
-       JOIN weekly_competitions c ON w.competition_id = c.competition_id
+       LEFT JOIN weekly_competitions c ON w.competition_id = c.competition_id
+       ${compWhere}
        ORDER BY w.rank ASC 
-       LIMIT 100`
+       LIMIT 200`,
+      params
     );
 
     return res.rows.map((w) => ({
       competition: w.comp_title || 'Weekly Championship',
       period: w.period_label || 'Current Cycle',
       rank: w.rank,
-      maskedMsisdn: w.masked_msisdn,
+      maskedMsisdn: maskMsisdn(w.player_msisdn),
       score: w.total_7day_score,
       timeSpent: `${((w.total_response_time_ms || 0) / 1000).toFixed(1)}s`,
       prizeBirr: parseFloat(w.prize_etb || 0),
@@ -1429,6 +1566,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
   fastify.get('/reports/export', { preHandler: [verifyAuditorOrAdmin] }, async (req, reply) => {
     const query = (req.query || {}) as { type?: string; unmasked?: string };
     const allowUnmasked = query.unmasked === 'true';
+    const reportType = query.type || 'WINNERS';
 
     if (allowUnmasked) {
       if (req.user?.role !== 'SUPER_ADMIN') {
@@ -1439,27 +1577,95 @@ export async function adminRoutes(fastify: FastifyInstance) {
         req,
         'EXPORT_UNMASKED_REPORT',
         'REPORTS',
-        query.type || 'ALL',
+        reportType,
         'MASKED',
         'UNMASKED',
         'Telecom regulatory and billing audit export'
       );
     }
 
-    let csvContent = 'Rank,MSISDN,Score,Prize_ETB,Status\n';
-    const lbRes = await pool.query(
-      `SELECT * FROM weekly_leaderboard ORDER BY rank ASC LIMIT 1000`
-    );
+    let csvContent = '';
 
-    for (const r of lbRes.rows) {
-      const phone = allowUnmasked ? r.player_msisdn : r.masked_msisdn;
-      csvContent += `${r.rank},${phone},${r.total_7day_score},${r.prize_etb},${r.is_disbursed ? 'DISBURSED' : 'PENDING'}\n`;
+    if (reportType === 'AUDIT') {
+      csvContent = 'Timestamp,Admin_Name,Admin_Role,Action,Object_Type,Object_ID,Old_Value,New_Value,Reason\n';
+      const res = await pool.query(`SELECT * FROM admin_audit_logs ORDER BY created_at DESC LIMIT 1000`);
+      for (const l of res.rows) {
+        const ts = l.created_at ? l.created_at.toISOString() : '';
+        const oldVal = (l.old_value || '').replace(/"/g, '""');
+        const newVal = (l.new_value || '').replace(/"/g, '""');
+        const reason = (l.reason || '').replace(/"/g, '""');
+        csvContent += `"${ts}","${l.admin_name || ''}","${l.admin_role || ''}","${l.action}","${l.object_type}","${l.object_id}","${oldVal}","${newVal}","${reason}"\n`;
+      }
+    } else if (reportType === 'SUBSCRIPTIONS') {
+      csvContent = 'MSISDN,Shortcode,Status,Plan,Price_ETB,Channel,Activated_At,Last_Billed,Next_Renewal\n';
+      const res = await pool.query(`SELECT * FROM subscriptions ORDER BY last_billed_at DESC LIMIT 1000`);
+      for (const s of res.rows) {
+        const phone = allowUnmasked ? s.msisdn : maskMsisdn(s.msisdn);
+        csvContent += `"${phone}","${s.shortcode || '9401'}","${s.status}","${s.plan_type || 'DAILY'}","${s.price_etb}","${s.channel || 'SMS_9401'}","${s.activated_at || ''}","${s.last_billed_at || ''}","${s.next_billing_at || ''}"\n`;
+      }
+    } else if (reportType === 'DAILY_CHALLENGE') {
+      csvContent = 'Date,Rank,MSISDN,Score,Time_Spent_Sec,Completed,Submitted_At\n';
+      const res = await pool.query(
+        `SELECT * FROM daily_attempts ORDER BY attempt_date DESC, score DESC LIMIT 1000`
+      );
+      let rank = 1;
+      let lastDate = '';
+      for (const a of res.rows) {
+        const dStr = formatDbDateStr(a.attempt_date);
+        if (dStr !== lastDate) {
+          rank = 1;
+          lastDate = dStr;
+        } else {
+          rank++;
+        }
+        const phone = allowUnmasked ? a.player_msisdn : maskMsisdn(a.player_msisdn);
+        csvContent += `"${dStr}",${rank},"${phone}",${a.score},${((a.total_response_time_ms || 0) / 1000).toFixed(1)},"${a.is_completed ? 'YES' : 'NO'}","${a.submitted_at || ''}"\n`;
+      }
+    } else if (reportType === 'WEEKLY_COMPETITION') {
+      csvContent = 'Competition_ID,Title,Period,Start_Date,End_Date,Status,Participants,Top_Score,Prize_Pool_ETB\n';
+      const res = await pool.query(
+        `SELECT wc.*, COALESCE(lb.cnt, 0)::int as parts, COALESCE(lb.top, 0)::int as top
+         FROM weekly_competitions wc
+         LEFT JOIN (SELECT competition_id, COUNT(*)::int as cnt, MAX(total_7day_score)::int as top FROM weekly_leaderboard GROUP BY competition_id) lb ON wc.competition_id = lb.competition_id
+         ORDER BY wc.cycle_number DESC LIMIT 500`
+      );
+      for (const c of res.rows) {
+        csvContent += `"${c.competition_id}","${c.title}","${c.period_label}","${c.start_date}","${c.end_date}","${c.status}",${c.parts},${c.top},${c.prize_pool_etb}\n`;
+      }
+    } else if (reportType === 'PRIZES') {
+      csvContent = 'Date,MSISDN,Context,Standard_Prize_ETB,Override_Prize_ETB,Status,Reason,Admin\n';
+      const res = await pool.query(`SELECT * FROM player_prize_overrides ORDER BY created_at DESC LIMIT 1000`);
+      for (const o of res.rows) {
+        const phone = allowUnmasked ? o.player_msisdn : maskMsisdn(o.player_msisdn);
+        const reason = (o.reason || '').replace(/"/g, '""');
+        csvContent += `"${o.created_at ? o.created_at.toISOString().slice(0, 10) : ''}","${phone}","${o.context}",${o.standard_prize_birr || 0},${o.override_prize_birr || 0},"${o.status}","${reason}","${o.admin_name || ''}"\n`;
+      }
+    } else if (reportType === 'PARTICIPATION') {
+      csvContent = 'MSISDN,Status,Level,Best_Score,Weekly_Score,Challenges_Played,Total_Prizes_ETB,Circle,Registered_At\n';
+      const res = await pool.query(`SELECT * FROM players ORDER BY last_active_at DESC LIMIT 1000`);
+      for (const p of res.rows) {
+        const phone = allowUnmasked ? p.msisdn : maskMsisdn(p.msisdn);
+        csvContent += `"${phone}","${p.status}",${p.current_level},${p.best_score},${p.weekly_score},${p.daily_challenge_participations},${p.total_prizes_won_birr},"${p.telecom_circle}","${p.created_at ? p.created_at.toISOString().slice(0, 10) : ''}"\n`;
+      }
+    } else {
+      // Default: WINNERS & LEADERBOARD
+      csvContent = 'Rank,MSISDN,Score,Prize_ETB,Status,Competition\n';
+      const lbRes = await pool.query(
+        `SELECT w.*, c.title as comp_title 
+         FROM weekly_leaderboard w 
+         LEFT JOIN weekly_competitions c ON w.competition_id = c.competition_id 
+         ORDER BY w.rank ASC LIMIT 1000`
+      );
+      for (const r of lbRes.rows) {
+        const phone = allowUnmasked ? r.player_msisdn : r.masked_msisdn;
+        csvContent += `${r.rank},"${phone}",${r.total_7day_score},${r.prize_etb},"${r.is_disbursed ? 'DISBURSED' : 'PENDING'}","${r.comp_title || r.competition_id}"\n`;
+      }
     }
 
     reply.header('Content-Type', 'text/csv');
     reply.header(
       'Content-Disposition',
-      `attachment; filename="EthioFantasy_Report_${getEatDateString()}.csv"`
+      `attachment; filename="EthioFantasy_${reportType}_${getEatDateString()}.csv"`
     );
     return reply.send(csvContent);
   });

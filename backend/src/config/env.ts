@@ -29,6 +29,7 @@ export const env = cleanEnv(process.env, {
   SP_GATEWAY_URL: str({ default: 'http://168.119.53.26:8484' }),
   SP_API_KEY: str({ default: 'ethiofantasy-sp-api-key-2026' }),
   SP_WEBHOOK_SECRET: str({ default: 'ethiofantasy-hmac-webhook-secret-2026' }),
+  PORTAL_WEBHOOK_SECRET: str({ default: 'ethiofantasy-hmac-webhook-secret-2026' }),
   SP_SERVICE_ID: str({ default: '4' }),
   SHORTCODE: str({ default: '9401' }),
 

@@ -87,7 +87,14 @@ export async function verifyAuth(req: FastifyRequest, reply: FastifyReply): Prom
  */
 export async function verifyAdminAuth(req: FastifyRequest, reply: FastifyReply): Promise<void> {
   const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+  const queryToken = (req.query as any)?.token;
+  let token = '';
+
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    token = authHeader.substring(7);
+  } else if (typeof queryToken === 'string' && queryToken.trim().length > 0) {
+    token = queryToken.trim();
+  } else {
     reply.status(401).send({
       success: false,
       error: 'UNAUTHORIZED_ADMIN',
@@ -95,8 +102,6 @@ export async function verifyAdminAuth(req: FastifyRequest, reply: FastifyReply):
     });
     return;
   }
-
-  const token = authHeader.substring(7);
 
   try {
     let decoded: AuthenticatedUser | null = null;

@@ -6,7 +6,6 @@ import {
   DailyChallengeAttempt,
   QuestionResult,
 } from '../types/quiz';
-import { getDailyChallengeQuestionsForDate } from '../data/dailyChallengeData';
 
 export interface StoredDailyReview {
   playerId: string;
@@ -343,6 +342,6 @@ export function getTop10Leaderboard(
  * Get Daily Challenge Question Set
  * Strictly uses DAILY_CHALLENGE exclusive question pool
  */
-export function getDailyChallengeQuestions(dateStr: string): Question[] {
-  return getDailyChallengeQuestionsForDate(dateStr);
+export function getDailyChallengeQuestions(_dateStr: string): Question[] {
+  return [];
 }

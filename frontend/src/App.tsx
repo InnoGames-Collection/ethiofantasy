@@ -8,12 +8,12 @@ import {
   UserProfile,
   DailyChallengeState,
 } from './types/quiz';
-import { LEVELS } from './data/levelsData';
 import {
   getDefaultUserProgress,
   fetchUserProgressFromDb,
   submitLevelProgressToDb,
   fetchLevelQuestionsFromDb,
+  fetchLevelsFromDb,
 } from './services/storageService';
 import {
   getDefaultUserProfile,
@@ -35,7 +35,6 @@ import { QuestionScreen } from './components/screens/QuestionScreen';
 import { CongratulationsScreen } from './components/screens/CongratulationsScreen';
 import { ReviewScreen } from './components/screens/ReviewScreen';
 import { LoginScreen } from './components/screens/LoginScreen';
-import { AdminQuestionBankModal } from './components/admin/AdminQuestionBankModal';
 
 import { HomeTab } from './components/tabs/HomeTab';
 import { LeaderboardTab } from './components/tabs/LeaderboardTab';
@@ -45,7 +44,7 @@ import { BottomNavBar } from './components/navigation/BottomNavBar';
 export default function App() {
   const [currentScreen, setCurrentScreen] = useState<ScreenType>('SPLASH');
   const [activeNavTab, setActiveNavTab] = useState<BottomNavTab>('HOME');
-  const [showAdminQuestionBank, setShowAdminQuestionBank] = useState<boolean>(false);
+  const [levels, setLevels] = useState<LevelData[]>([]);
 
   // Strictly In-Memory & Database-Backed State (ZERO LocalStorage)
   const [userProgress, setUserProgress] = useState<UserProgress>(getDefaultUserProgress);
@@ -81,6 +80,15 @@ export default function App() {
   useEffect(() => {
     sound.setSoundEnabled(userProgress.soundEnabled);
   }, [userProgress.soundEnabled]);
+
+  // Load 100 Championship Levels directly from PostgreSQL
+  useEffect(() => {
+    fetchLevelsFromDb(userProfile.msisdn).then((loadedLevels) => {
+      if (loadedLevels && loadedLevels.length > 0) {
+        setLevels(loadedLevels);
+      }
+    });
+  }, [userProfile.msisdn]);
 
   // Handle hardware / browser back navigation
   useEffect(() => {
@@ -487,7 +495,6 @@ export default function App() {
                   language={userProfile.language}
                   onUpdateLanguage={handleUpdateLanguage}
                   onLogout={handleLogout}
-                  onOpenAdminQuestionBank={() => setShowAdminQuestionBank(true)}
                 />
               </div>
             )}
@@ -495,13 +502,12 @@ export default function App() {
             {/* TAB 2: GAME (Preserved Football Quiz 100-Level Interface) */}
             {activeNavTab === 'GAME' && (
               <LevelSelectScreen
-                levels={LEVELS}
+                levels={levels}
                 userProgress={userProgress}
                 currentUserMaskedMsisdn={userProfile.maskedMsisdn}
                 onSelectLevel={handleSelectLevel}
                 onResetProgress={handleResetProgress}
                 onToggleSound={handleToggleSound}
-                onOpenAdminQuestionBank={() => setShowAdminQuestionBank(true)}
               />
             )}
 
@@ -589,12 +595,6 @@ export default function App() {
             onBackToLevels={handleBackToLevels}
           />
         )}
-
-        {/* Admin Question Bank Image Preview Modal (Requirement #13) */}
-        <AdminQuestionBankModal
-          isOpen={showAdminQuestionBank}
-          onClose={() => setShowAdminQuestionBank(false)}
-        />
       </div>
     </div>
   );

@@ -1,4 +1,4 @@
-import { FastifyInstance } from 'fastify';
+import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import crypto from 'crypto';
 import { pool } from '../config/database.js';
 import { cache } from '../config/cache.js';
@@ -28,27 +28,31 @@ export async function webhookRoutes(fastify: FastifyInstance) {
   });
 
   /**
-   * Inbound Ethio Telecom Subscription Webhook (Airtime Charging / DLR / Opt-out)
+   * Reusable Inbound Subscription Handler with Timing-Safe HMAC & Idempotency
    */
-  fastify.post('/subscription', async (req, reply) => {
-    // 1. Timing-Safe HMAC Verification (Skip in test environment)
+  const handleSubscriptionWebhook = async (req: FastifyRequest, reply: FastifyReply) => {
+    // 1. Timing-Safe HMAC Verification
     if (env.NODE_ENV !== 'test') {
-      const signature = req.headers['x-signature'] as string;
+      const signature = (req.headers['x-signature'] as string) || '';
       const rawBuffer = (req as any).rawBodyBuffer as Buffer;
 
       if (!signature || !rawBuffer) {
         return reply.status(401).send({ error: 'Missing X-Signature header or request body' });
       }
 
-      const hmac = crypto.createHmac('sha256', env.SP_WEBHOOK_SECRET);
+      const secret = env.PORTAL_WEBHOOK_SECRET || env.SP_WEBHOOK_SECRET;
+      const hmac = crypto.createHmac('sha256', secret);
       hmac.update(rawBuffer);
-      const expectedSignature = 'sha256=' + hmac.digest('hex');
+      const computedDigest = hmac.digest('hex').toLowerCase();
 
-      const sigBuf = Buffer.from(signature);
-      const expBuf = Buffer.from(expectedSignature);
+      // Normalize: strip 'sha256=' prefix if present and convert to lowercase hex
+      const cleanHeaderSig = signature.replace(/^sha256=/i, '').trim().toLowerCase();
+
+      const sigBuf = Buffer.from(cleanHeaderSig, 'utf8');
+      const expBuf = Buffer.from(computedDigest, 'utf8');
 
       if (sigBuf.length !== expBuf.length || !crypto.timingSafeEqual(sigBuf, expBuf)) {
-        req.log.error({ signature, expected: expectedSignature }, 'HMAC webhook signature validation failed');
+        req.log.warn({ signature, expected: computedDigest }, 'HMAC webhook signature validation failed');
         return reply.status(403).send({ error: 'Invalid HMAC signature' });
       }
     }
@@ -61,17 +65,25 @@ export async function webhookRoutes(fastify: FastifyInstance) {
       return reply.status(400).send({ error: 'Missing mandatory parameters (event, msisdn)' });
     }
 
+    // 2. Replay Protection: Check timestamp window (5 minutes max)
+    if (body.timestamp) {
+      const nowMs = Date.now();
+      const tsMs = body.timestamp > 1e11 ? body.timestamp : body.timestamp * 1000;
+      if (Math.abs(nowMs - tsMs) > 300000) {
+        return reply.status(400).send({ error: 'Timestamp expired (max 5 minutes skew)' });
+      }
+    }
+
     const norm = normalizeMsisdn(msisdn);
     const masked = maskMsisdn(norm);
 
-    // 2. Distributed Lock to prevent concurrent racing on the same MSISDN
+    // 3. Distributed Lock to prevent concurrent racing on the same MSISDN
     const lockKey = `lock:webhook:${norm}`;
     let acquired = false;
     try {
       const lockRes = await cache.set(lockKey, '1', 'PX', 5000, 'NX');
       acquired = Boolean(lockRes);
     } catch (err) {
-      // If Redis is temporarily unavailable, proceed with database transactional safety
       acquired = true;
     }
 
@@ -83,7 +95,7 @@ export async function webhookRoutes(fastify: FastifyInstance) {
     try {
       await client.query('BEGIN');
 
-      // 3. Idempotency Check via Database Audit Table
+      // 4. Idempotency Check via Database Audit Table
       const existingRes = await client.query(
         `SELECT id FROM sp_webhook_events WHERE request_id = $1 LIMIT 1`,
         [requestId]
@@ -102,13 +114,15 @@ export async function webhookRoutes(fastify: FastifyInstance) {
         [event, requestId, norm, body.service_id || env.SP_SERVICE_ID, JSON.stringify(body)]
       );
 
-      // 4. Atomic Subscription State Updates
+      // 5. Atomic Subscription State Updates
       if (event === 'subscribe' || event === 'renew') {
         await client.query(
-          `INSERT INTO subscriptions (msisdn, shortcode, service_id, status, renew_count, last_billed_at, next_billing_at, updated_at)
-           VALUES ($1, $2, $3, 'ACTIVE', 1, NOW(), NOW() + INTERVAL '1 day', NOW())
+          `INSERT INTO subscriptions (msisdn, shortcode, service_id, status, renew_count, price_etb, last_billed_at, next_billing_at, updated_at)
+           VALUES ($1, $2, $3, 'ACTIVE', 1, 2.00, NOW(), NOW() + INTERVAL '1 day', NOW())
            ON CONFLICT (msisdn) DO UPDATE SET
              status = 'ACTIVE',
+             shortcode = $2,
+             price_etb = 2.00,
              renew_count = subscriptions.renew_count + 1,
              last_billed_at = NOW(),
              next_billing_at = NOW() + INTERVAL '1 day',
@@ -126,14 +140,14 @@ export async function webhookRoutes(fastify: FastifyInstance) {
       } else if (event === 'unsubscribe') {
         await client.query(
           `UPDATE subscriptions 
-           SET status = 'UNSUBSCRIBED', updated_at = NOW() 
+           SET status = 'UNSUBSCRIBED', updated_at = NOW(), cancellation_reason = 'USER_OPT_OUT'
            WHERE msisdn = $1`,
           [norm]
         );
       } else if (event === 'billing_failed') {
         await client.query(
           `UPDATE subscriptions 
-           SET status = 'SUSPENDED', failure_reason = 'INSUFFICIENT_AIRTIME', updated_at = NOW() 
+           SET status = 'SUSPENDED', failure_reason = 'INSUFFICIENT_AIRTIME', suspended_at = NOW(), updated_at = NOW() 
            WHERE msisdn = $1`,
           [norm]
         );
@@ -141,7 +155,7 @@ export async function webhookRoutes(fastify: FastifyInstance) {
 
       await client.query('COMMIT');
 
-      // 5. Post-Commit Actions (MT Notifications)
+      // 6. Post-Commit Actions (MT Notifications)
       if (event === 'subscribe') {
         SpService.sendMt({
           msisdn: norm,
@@ -161,12 +175,52 @@ export async function webhookRoutes(fastify: FastifyInstance) {
         await cache.del(lockKey);
       } catch (e) {}
     }
+  };
+
+  /**
+   * Inbound Ethio Telecom Subscription Webhook (Routes supported: /subscription and /webhooks/subscription)
+   */
+  fastify.post('/subscription', handleSubscriptionWebhook);
+  fastify.post('/webhooks/subscription', handleSubscriptionWebhook);
+
+  /**
+   * Outbound MT SMS Dispatch Route (for OTPs, notifications, prize disbursements)
+   */
+  fastify.post('/mt/send', async (req, reply) => {
+    const apiKey = (req.headers['x-api-key'] as string) || (req.headers['authorization'] as string)?.replace(/^Bearer /i, '');
+    if (apiKey !== env.SP_API_KEY && apiKey !== env.CRON_SECRET) {
+      return reply.status(401).send({ error: 'Unauthorized MT dispatch request' });
+    }
+
+    const { msisdn, message, type = 'business', extTransactionId } = req.body as {
+      msisdn: string;
+      message: string;
+      type?: 'otp' | 'optin' | 'optout' | 'business';
+      extTransactionId?: string;
+    };
+
+    if (!msisdn || !message) {
+      return reply.status(400).send({ error: 'msisdn and message are required' });
+    }
+
+    const norm = normalizeMsisdn(msisdn);
+    const result = await SpService.sendMt({
+      msisdn: norm,
+      message,
+      type,
+      extTransactionId,
+    });
+
+    return reply.status(result.success ? 200 : 502).send(result);
   });
 
   /**
    * Inbound Delivery Status Callback (DLR)
    */
   fastify.post('/dlr', async (req, reply) => {
+    return reply.send({ received: true });
+  });
+  fastify.post('/webhooks/dlr', async (req, reply) => {
     return reply.send({ received: true });
   });
 }

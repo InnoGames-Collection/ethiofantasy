@@ -134,8 +134,6 @@ export class CompetitionLifecycleService {
       let totalPrizesDistributed = 0;
       let totalWinnersCount = 0;
 
-      await client.query(`DELETE FROM weekly_leaderboard WHERE competition_id = $1`, [competitionId]);
-
       for (const p of attemptsRes.rows) {
         const currentRank = rank++;
         const rule = prizeRules.find((r: any) => r.rank === currentRank);
@@ -148,7 +146,13 @@ export class CompetitionLifecycleService {
         await client.query(
           `INSERT INTO weekly_leaderboard 
            (competition_id, player_msisdn, masked_msisdn, total_7day_score, total_response_time_ms, rank, prize_etb, is_disbursed)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, FALSE)`,
+           VALUES ($1, $2, $3, $4, $5, $6, $7, FALSE)
+           ON CONFLICT (competition_id, player_msisdn) DO UPDATE SET
+             masked_msisdn = EXCLUDED.masked_msisdn,
+             total_7day_score = EXCLUDED.total_7day_score,
+             total_response_time_ms = EXCLUDED.total_response_time_ms,
+             rank = EXCLUDED.rank,
+             prize_etb = EXCLUDED.prize_etb`,
           [
             competitionId,
             p.player_msisdn,

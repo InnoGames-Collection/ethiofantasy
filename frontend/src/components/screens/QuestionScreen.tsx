@@ -9,6 +9,7 @@ import {
   calculateSpeedPoints,
   submitDailyChallengeAnswer,
 } from '../../services/ethioFantasyService';
+import { submitLevelAnswerToDb } from '../../services/storageService';
 import { Clock, ChevronRight } from 'lucide-react';
 
 interface QuestionScreenProps {
@@ -232,15 +233,35 @@ export const QuestionScreen: React.FC<QuestionScreenProps> = ({
         setLastQuestionEarned(finalQuestionScore);
       }
     } else {
-      // Level-Based Game: Calibrated points (1 base pt, +1 speed pt if answered <= 20s, max 2 pts per question)
-      isCorrect = index === currentQuestion.correctAnswerIndex;
-      const pointsEarned = isCorrect ? (1 + (timeLeft >= 40 ? 1 : 0)) : 0;
-      finalQuestionScore = pointsEarned;
+      // Level-Based Game: Server-authoritative answer validation
+      try {
+        const resp = await submitLevelAnswerToDb({
+          levelId: level.id,
+          questionId: currentQuestion.id,
+          selectedIndex: index,
+          elapsedSeconds,
+        });
+
+        if (resp && resp.success) {
+          isCorrect = Boolean(resp.isCorrect);
+          finalQuestionScore = resp.pointsEarned ?? (isCorrect ? (1 + (timeLeft >= 40 ? 1 : 0)) : 0);
+          if (typeof resp.correctAnswerIndex === 'number') {
+            currentQuestion.correctAnswerIndex = resp.correctAnswerIndex;
+          }
+        } else {
+          isCorrect = typeof currentQuestion.correctAnswerIndex === 'number' && index === currentQuestion.correctAnswerIndex;
+          finalQuestionScore = isCorrect ? (1 + (timeLeft >= 40 ? 1 : 0)) : 0;
+        }
+      } catch {
+        isCorrect = false;
+        finalQuestionScore = 0;
+      }
+
       baseScore = isCorrect ? 1 : 0;
-      speedScore = pointsEarned > 1 ? 1 : 0;
+      speedScore = finalQuestionScore > 1 ? 1 : 0;
       if (isCorrect) {
-        setChallengeScoreEarned((prev) => prev + pointsEarned);
-        setLastQuestionEarned(pointsEarned);
+        setChallengeScoreEarned((prev) => prev + finalQuestionScore);
+        setLastQuestionEarned(finalQuestionScore);
       }
     }
 

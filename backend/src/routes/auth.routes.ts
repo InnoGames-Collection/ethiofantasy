@@ -104,19 +104,21 @@ export async function authRoutes(fastify: FastifyInstance) {
       );
     } catch (e) {}
 
-    // Pre-production & gateway-offline fallback: If telecom SMS gateway is offline / unreachable (!spResult.success),
-    // or if this is a registered test subscriber, or if system is in DEMO mode:
-    const isPreProdFallback = !spResult.success || Boolean(testSub) || systemMode === 'DEMO' || env.NODE_ENV !== 'production';
+    // Strict Production Hardening: Never return demoOtp to client in production
+    const isProduction = env.NODE_ENV === 'production' && systemMode === 'PRODUCTION';
+    const allowDemoOtp = !isProduction && (systemMode === 'DEMO' || Boolean(testSub));
 
     return reply.send({
       success: true,
       subscribed: isSubscribed || isDevOrDemo,
-      message: isPreProdFallback
-        ? `Verification code generated. (Telecom SMS Gateway offline/pre-prod — Use code: ${otp})`
-        : `Verification code sent to ${maskMsisdn(norm)} via SMS (Shortcode 9401).`,
+      message: spResult.success
+        ? `Verification code sent to ${maskMsisdn(norm)} via SMS (Shortcode 9401).`
+        : isProduction
+        ? `Verification code dispatch initiated to ${maskMsisdn(norm)}. Please check your SMS inbox.`
+        : `Verification code generated. (Telecom SMS Gateway offline/pre-prod — Use code: ${otp})`,
       maskedMsisdn: maskMsisdn(norm),
       spStatus: spResult.success ? 'SENT_TO_MA_9401' : 'QUEUED',
-      demoOtp: isPreProdFallback ? otp : undefined,
+      demoOtp: allowDemoOtp ? otp : undefined,
     });
   });
 
@@ -530,42 +532,18 @@ export async function authRoutes(fastify: FastifyInstance) {
     }));
 
     if (!currentAdmin) {
-      // In development or first load, fall back to default admin with valid token
-      const defaultAdmin = availableAdmins[0] || {
-        id: 'a0000000-0000-0000-0000-000000000001',
-        name: 'Abebe Tekele',
-        email: 'atekele21@gmail.com',
-        role: 'SUPER_ADMIN',
-        department: 'Telecom Value Added Services (VAS)',
-        active: true,
-        lastLogin: getEatTimestampString(),
-        createdAt: getEatTimestampString(),
-      };
-      currentAdmin = defaultAdmin;
+      return reply.status(401).send({
+        success: false,
+        error: 'UNAUTHORIZED_ADMIN',
+        message: 'Valid administrative Bearer authorization token required',
+      });
     }
 
-    const token = jwt.sign(
-      {
-        id: currentAdmin.id,
-        email: currentAdmin.email,
-        username: currentAdmin.name,
-        role: currentAdmin.role,
-        jti: crypto.randomUUID(),
-      },
-      env.ADMIN_JWT_SECRET,
-      {
-        algorithm: 'HS256',
-        issuer: ADMIN_JWT_ISSUER,
-        audience: ADMIN_JWT_AUDIENCE,
-        expiresIn: (env.ADMIN_JWT_EXPIRES_IN || '15m') as any,
-      }
-    );
-
-    return {
-      token,
+    return reply.send({
+      success: true,
       currentAdmin,
-      availableAdmins,
-    };
+      availableAdmins: currentAdmin.role === 'SUPER_ADMIN' ? availableAdmins : [currentAdmin],
+    });
   });
 
   // 3e. Admin Context Switch (Restricted to SUPER_ADMIN with Audit Log)

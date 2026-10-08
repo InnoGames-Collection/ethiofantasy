@@ -53,11 +53,30 @@ export class AuthoritativeGameEngine {
     const msisdn = normalizeMsisdn(rawMsisdn);
     const today = getEatDateString();
 
-    // 1. Verify player is actively subscribed (Ethio Telecom VAS billing gating)
-    const subRes = await pool.query(
-      `SELECT status FROM subscriptions WHERE msisdn = $1 AND status = 'ACTIVE' LIMIT 1`,
-      [msisdn]
-    );
+    // Distributed concurrency lock per MSISDN and challenge date
+    const lockKey = `lock:daily_session:${msisdn}:${today}`;
+    let lockAcquired = false;
+    try {
+      const lockRes = await cache.set(lockKey, '1', 'PX', 5000, 'NX');
+      lockAcquired = lockRes === 'OK';
+    } catch {
+      lockAcquired = true;
+    }
+
+    if (!lockAcquired) {
+      return {
+        success: false,
+        code: 'CONCURRENT_REQUEST',
+        error: 'Daily challenge session request in progress. Please wait.',
+      };
+    }
+
+    try {
+      // 1. Verify player is actively subscribed (Ethio Telecom VAS billing gating)
+      const subRes = await pool.query(
+        `SELECT status FROM subscriptions WHERE msisdn = $1 AND status = 'ACTIVE' LIMIT 1`,
+        [msisdn]
+      );
 
     // Also check test subscriber table for enrolled test accounts
     let isTestSub = false;
@@ -233,7 +252,12 @@ export class AuthoritativeGameEngine {
       sessionAnswers: existingAnswers,
       questions: orderedQuestions,
     };
+  } finally {
+    try {
+      await cache.del(lockKey);
+    } catch {}
   }
+}
 
   /**
    * Server-authoritative answer validation with wall-clock latency checking.

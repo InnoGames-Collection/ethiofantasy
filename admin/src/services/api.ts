@@ -291,7 +291,9 @@ export const api = {
     return request(`/reports/data?${params.toString()}`);
   },
   getExportUrl(type: string, unmasked = false): string {
-    return `${API_BASE}/reports/export?type=${type}&unmasked=${unmasked ? 'true' : 'false'}`;
+    const token = getAdminToken();
+    const tokenParam = token ? `&token=${encodeURIComponent(token)}` : '';
+    return `${API_BASE}/reports/export?type=${type}&unmasked=${unmasked ? 'true' : 'false'}${tokenParam}`;
   },
 
   // ── Settings ──────────────────────────────────────────────────────────────

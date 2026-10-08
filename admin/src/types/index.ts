@@ -209,6 +209,7 @@ export interface ServiceSettings {
   publicLeaderboardTopN: number;
   supportContact: string;
   serviceNoticeBanner: string;
+  systemMode?: 'DEMO' | 'PRODUCTION';
   updatedAt: string;
   updatedBy: string;
 }

@@ -107,6 +107,8 @@ async function main() {
   await fastify.register(dailyChallengeRoutes, { prefix: '/api/daily-challenge' });
   await fastify.register(leaderboardRoutes, { prefix: '/api/leaderboard' });
   await fastify.register(webhookRoutes, { prefix: '/api/webhooks' });
+  await fastify.register(webhookRoutes, { prefix: '/api/v1/webhooks' });
+  await fastify.register(webhookRoutes, { prefix: '/api/v1' });
   await fastify.register(playerRoutes, { prefix: '/api/player' });
   await fastify.register(questionsRoutes, { prefix: '/api/questions' });
   await fastify.register(matchRoutes, { prefix: '/api/match' });
