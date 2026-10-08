@@ -43,7 +43,7 @@ echo "📦 Ensuring database migrations and shortcode 9401 are applied..."
 for migration in db/migrations/*.sql; do
   if [ -f "$migration" ]; then
     echo "  Executing migration: $(basename "$migration")..."
-    docker compose -f docker-compose.server.yml exec -T postgres psql -U ethiofantasy_app -d ethiofantasy -f "/docker-entrypoint-initdb.d/$(basename "$migration")" || true
+    docker compose -f docker-compose.server.yml exec -T postgres psql -U ethiofantasy_app -d ethiofantasy -f - < "$migration" || true
   fi
 done
 
@@ -82,6 +82,19 @@ for i in {1..30}; do
   fi
   sleep 2
 done
+
+# Nginx vhost linking if on host
+if [ -d "/etc/nginx/conf.d/products" ] && [ -f "deploy/nginx/ethiofantasy.conf" ]; then
+  echo "🌐 Updating Nginx virtual host in /etc/nginx/conf.d/products/..."
+  sudo cp deploy/nginx/ethiofantasy.conf /etc/nginx/conf.d/products/ethiofantasy.conf || true
+  sudo rm -f /etc/nginx/sites-enabled/ethiofantasy.conf || true
+  sudo nginx -t && sudo systemctl reload nginx || true
+elif [ -d "/etc/nginx/sites-available" ] && [ -f "deploy/nginx/ethiofantasy.conf" ]; then
+  echo "🌐 Updating Nginx virtual host in /etc/nginx/sites-available/..."
+  sudo cp deploy/nginx/ethiofantasy.conf /etc/nginx/sites-available/ethiofantasy.conf || true
+  sudo ln -sf /etc/nginx/sites-available/ethiofantasy.conf /etc/nginx/sites-enabled/ || true
+  sudo nginx -t && sudo systemctl reload nginx || true
+fi
 
 trap - EXIT
 echo "=============================================================================="
