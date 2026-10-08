@@ -131,25 +131,13 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
     userProgress.stars,
   ]);
 
-  const [readMessageIds, setReadMessageIds] = useState<string[]>(() => {
-    try {
-      const raw = localStorage.getItem('ethiofantasy_read_messages_v1');
-      return raw ? JSON.parse(raw) : [];
-    } catch {
-      return [];
-    }
-  });
+  const [readMessageIds, setReadMessageIds] = useState<string[]>([]);
 
   const unreadCount = availableMessages.filter((m) => !readMessageIds.includes(m.id)).length;
 
   const markAllMessagesAsRead = () => {
     const allIds = availableMessages.map((m) => m.id);
     setReadMessageIds(allIds);
-    try {
-      localStorage.setItem('ethiofantasy_read_messages_v1', JSON.stringify(allIds));
-    } catch {
-      // Ignore
-    }
   };
 
   // Safe navigation with Android Back support (Messages -> Profile)

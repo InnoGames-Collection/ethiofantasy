@@ -4,14 +4,9 @@ import {
   EthioLeaderboardEntry,
   Question,
   DailyChallengeAttempt,
-  DailyChallengeAnswer,
   QuestionResult,
 } from '../types/quiz';
 import { getDailyChallengeQuestionsForDate } from '../data/dailyChallengeData';
-
-const USER_PROFILE_KEY = 'ethiofantasy_user_profile_v1';
-const DAILY_CHALLENGE_PREFIX = 'ethiofantasy_daily_challenge_v2_';
-const DAILY_REVIEW_PREFIX = 'ethiofantasy_daily_review_v2_';
 
 export interface StoredDailyReview {
   playerId: string;
@@ -102,54 +97,9 @@ export function isDailyChallengeReviewLocked(challengeDate?: string): boolean {
 }
 
 /**
- * Save user answers and results for a completed Daily Challenge session
+ * User Profile Management (In-Memory ONLY - No LocalStorage)
  */
-export function saveDailyChallengeReview(
-  rawMsisdn: string,
-  challengeDate: string,
-  results: QuestionResult[],
-  levelScore: number,
-  totalResponseTime: number = 0
-): void {
-  try {
-    const playerId = normalizeMsisdn(rawMsisdn);
-    const key = `${DAILY_REVIEW_PREFIX}${playerId}_${challengeDate}`;
-    const payload: StoredDailyReview = {
-      playerId,
-      challengeDate,
-      results,
-      levelScore,
-      totalResponseTime,
-      submittedAt: new Date().toISOString(),
-    };
-    localStorage.setItem(key, JSON.stringify(payload));
-  } catch (e) {
-    console.error('Failed to save daily challenge review', e);
-  }
-}
-
-/**
- * Retrieve saved Daily Challenge review by player and date
- */
-export function getDailyChallengeReview(
-  rawMsisdn: string,
-  challengeDate: string
-): StoredDailyReview | null {
-  try {
-    const playerId = normalizeMsisdn(rawMsisdn);
-    const key = `${DAILY_REVIEW_PREFIX}${playerId}_${challengeDate}`;
-    const raw = localStorage.getItem(key);
-    if (!raw) return null;
-    return JSON.parse(raw);
-  } catch {
-    return null;
-  }
-}
-
-/**
- * User Profile Management (Default is strictly logged out for Tier-0 security)
- */
-const DEFAULT_PROFILE: UserProfile = {
+export const DEFAULT_PROFILE: UserProfile = {
   msisdn: '',
   maskedMsisdn: '',
   isLoggedIn: false,
@@ -159,43 +109,17 @@ const DEFAULT_PROFILE: UserProfile = {
   notificationsEnabled: true,
 };
 
-export function loadUserProfile(): UserProfile {
-  try {
-    const raw = localStorage.getItem(USER_PROFILE_KEY);
-    if (!raw) return DEFAULT_PROFILE;
-    const parsed = JSON.parse(raw);
-    if (!parsed || !parsed.msisdn || !parsed.isLoggedIn) {
-      return DEFAULT_PROFILE;
-    }
-    return {
-      ...DEFAULT_PROFILE,
-      ...parsed,
-      maskedMsisdn: maskMsisdn(parsed.msisdn),
-    };
-  } catch {
-    return DEFAULT_PROFILE;
-  }
-}
-
-export function saveUserProfile(profile: UserProfile): void {
-  try {
-    const withMask = {
-      ...profile,
-      maskedMsisdn: profile.msisdn ? maskMsisdn(profile.msisdn) : '',
-    };
-    localStorage.setItem(USER_PROFILE_KEY, JSON.stringify(withMask));
-  } catch (e) {
-    console.error('Error saving EthioFantasy profile', e);
-  }
+export function getDefaultUserProfile(): UserProfile {
+  return { ...DEFAULT_PROFILE };
 }
 
 /**
- * Load authoritative Daily Challenge state for the player from cache or local store
+ * Default Daily Challenge State in-memory
  */
-export function loadDailyChallengeState(msisdn: string): DailyChallengeState {
+export function getDefaultDailyChallengeState(): DailyChallengeState {
   const today = getCurrentServiceDate();
   const { dayNumber } = getCycleDayInfo(today);
-  const defaultState: DailyChallengeState = {
+  return {
     date: today,
     completed: false,
     todayScore: 0,
@@ -208,86 +132,13 @@ export function loadDailyChallengeState(msisdn: string): DailyChallengeState {
     totalCumulativeResponseTime: 0,
     activeAttempt: null,
   };
-
-  if (!msisdn) return defaultState;
-
-  const storageKey = `${DAILY_CHALLENGE_PREFIX}${normalizeMsisdn(msisdn)}`;
-  try {
-    const raw = localStorage.getItem(storageKey);
-    if (raw) {
-      const state = JSON.parse(raw);
-      if (state.date !== today) {
-        state.date = today;
-        state.completed = false;
-        state.todayScore = 0;
-        state.currentDayInCycle = dayNumber;
-        state.activeAttempt = null;
-      }
-      return state;
-    }
-  } catch {}
-
-  return defaultState;
-}
-
-/**
- * Records daily challenge score locally and synchronizes state
- */
-export function recordDailyChallengeScore(
-  msisdn: string,
-  pointsEarned: number,
-  responseTime: number = 0
-): DailyChallengeState {
-  const currentState = loadDailyChallengeState(msisdn);
-  const today = getCurrentServiceDate();
-  const { dayNumber } = getCycleDayInfo(today);
-
-  const updatedHistory = { ...currentState.history, [today]: pointsEarned };
-  const updatedResponseTimes = { ...currentState.historyResponseTimes, [today]: responseTime };
-  const updatedTimestamps = { ...currentState.historyTimestamps, [today]: new Date().toISOString() };
-
-  const sevenDayTotal = Object.values(updatedHistory).reduce((sum, score) => sum + (Number(score) || 0), 0);
-  const totalCumulativeResponseTime = Object.values(updatedResponseTimes).reduce((sum, time) => sum + (Number(time) || 0), 0);
-
-  const newState: DailyChallengeState = {
-    ...currentState,
-    date: today,
-    completed: true,
-    todayScore: pointsEarned,
-    history: updatedHistory,
-    historyResponseTimes: updatedResponseTimes,
-    historyTimestamps: updatedTimestamps,
-    currentDayInCycle: dayNumber,
-    sevenDayTotal,
-    totalCumulativeResponseTime,
-    activeAttempt: null,
-  };
-
-  if (msisdn) {
-    const storageKey = `${DAILY_CHALLENGE_PREFIX}${normalizeMsisdn(msisdn)}`;
-    try {
-      localStorage.setItem(storageKey, JSON.stringify(newState));
-    } catch {}
-
-    if (currentState.activeAttempt?.attemptId) {
-      completeDailyChallenge({
-        msisdn,
-        attemptId: currentState.activeAttempt.attemptId,
-      }).catch(err => console.warn('[completeDailyChallenge background sync error]', err));
-    }
-  }
-
-  return newState;
 }
 
 /**
  * Asynchronously fetches authoritative Daily Challenge state directly from PostgreSQL
  */
 export async function fetchDailyChallengeState(msisdn: string): Promise<DailyChallengeState> {
-  const today = getCurrentServiceDate();
-  const { dayNumber } = getCycleDayInfo(today);
-  const fallback = loadDailyChallengeState(msisdn);
-
+  const fallback = getDefaultDailyChallengeState();
   if (!msisdn) return fallback;
 
   try {
@@ -295,8 +146,6 @@ export async function fetchDailyChallengeState(msisdn: string): Promise<DailyCha
     if (resp.ok) {
       const data = await resp.json();
       if (data && data.state) {
-        const storageKey = `${DAILY_CHALLENGE_PREFIX}${normalizeMsisdn(msisdn)}`;
-        localStorage.setItem(storageKey, JSON.stringify(data.state));
         return data.state;
       }
     }
@@ -317,6 +166,9 @@ export async function startDailyChallenge(msisdn: string): Promise<{
   questions?: Question[];
   sessionId?: string;
   attemptId?: string;
+  currentIndex?: number;
+  currentScore?: number;
+  sessionAnswers?: any[];
   error?: string;
 }> {
   try {
@@ -336,17 +188,14 @@ export async function startDailyChallenge(msisdn: string): Promise<{
 }
 
 /**
- * Submit an answer to the server-authoritative engine
+ * Submit an answer to the server-authoritative engine in PostgreSQL
  */
 export async function submitDailyChallengeAnswer(params: {
   msisdn: string;
   sessionId?: string;
   attemptId?: string;
   questionId: string;
-  questionStartTimestamp?: string;
-  answerTimestamp?: string;
   selectedOptionIndex: number | null;
-  selectedIndex?: number | null;
 }): Promise<{
   success: boolean;
   isCorrect?: boolean;
@@ -357,6 +206,7 @@ export async function submitDailyChallengeAnswer(params: {
   elapsedSeconds?: number;
   nextQuestionIndex?: number;
   isCompleted?: boolean;
+  answers?: any[];
   error?: string;
 }> {
   try {
@@ -373,7 +223,7 @@ export async function submitDailyChallengeAnswer(params: {
 }
 
 /**
- * Complete Daily Challenge and save score to 7-Day total
+ * Complete Daily Challenge and save score to 7-Day total in PostgreSQL
  */
 export async function completeDailyChallenge(params: {
   msisdn: string;
@@ -390,14 +240,47 @@ export async function completeDailyChallenge(params: {
       body: JSON.stringify(params),
     });
     const data = await resp.json();
-    if (data.state) {
-      const storageKey = `${DAILY_CHALLENGE_PREFIX}${normalizeMsisdn(params.msisdn)}`;
-      localStorage.setItem(storageKey, JSON.stringify(data.state));
-    }
     return data;
   } catch (err: any) {
     return { success: false, error: 'Network error completing challenge.' };
   }
+}
+
+/**
+ * Fetch Daily Challenge Review directly from PostgreSQL backend
+ */
+export async function fetchDailyChallengeReview(
+  msisdn: string,
+  date?: string
+): Promise<{
+  success: boolean;
+  results: QuestionResult[];
+  levelScore: number;
+  totalResponseTime: number;
+}> {
+  if (!msisdn) {
+    return { success: false, results: [], levelScore: 0, totalResponseTime: 0 };
+  }
+
+  try {
+    const targetDate = date || getCurrentServiceDate();
+    const resp = await fetch(`/api/daily-challenge/review?msisdn=${encodeURIComponent(msisdn)}&date=${encodeURIComponent(targetDate)}`);
+    if (resp.ok) {
+      const data = await resp.json();
+      if (data && data.success) {
+        return {
+          success: true,
+          results: data.results || [],
+          levelScore: data.levelScore || 0,
+          totalResponseTime: data.totalResponseTime || 0,
+        };
+      }
+    }
+  } catch (err) {
+    console.warn('[Review fetch failed]', err);
+  }
+
+  return { success: false, results: [], levelScore: 0, totalResponseTime: 0 };
 }
 
 /**

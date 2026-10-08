@@ -13,6 +13,7 @@ export interface AnswerSubmissionResult {
   elapsedSeconds?: number;
   nextQuestionIndex?: number;
   isCompleted?: boolean;
+  answers?: any[];
   error?: string;
   code?: string;
 }
@@ -44,6 +45,7 @@ export class AuthoritativeGameEngine {
     challengeDate?: string;
     currentIndex?: number;
     currentScore?: number;
+    sessionAnswers?: any[];
     questions?: SanitizedQuestion[];
     code?: string;
     error?: string;
@@ -103,16 +105,28 @@ export class AuthoritativeGameEngine {
     let session = sessionRes.rows[0];
 
     if (!session) {
-      // Pick 10 active questions randomly from the pool
-      const questionsRes = await pool.query(
+      // Pick 10 active questions from DAILY_CHALLENGE pool (with fallback to any active question)
+      let questionsRes = await pool.query(
         `SELECT id, category, question_text, prompt_en, prompt_am, prompt_om,
                 options, options_en, options_am, image_url, image_caption,
                 difficulty, correct_index
          FROM quiz_questions
-         WHERE is_active = TRUE
+         WHERE is_active = TRUE AND pool = 'DAILY_CHALLENGE'
          ORDER BY RANDOM()
          LIMIT 10`
       );
+
+      if (questionsRes.rows.length < 10) {
+        questionsRes = await pool.query(
+          `SELECT id, category, question_text, prompt_en, prompt_am, prompt_om,
+                  options, options_en, options_am, image_url, image_caption,
+                  difficulty, correct_index
+           FROM quiz_questions
+           WHERE is_active = TRUE
+           ORDER BY RANDOM()
+           LIMIT 10`
+        );
+      }
 
       if (questionsRes.rows.length < 10) {
         throw new Error('Insufficient questions published in database question bank.');
@@ -150,6 +164,14 @@ export class AuthoritativeGameEngine {
          VALUES ($1, $2, $3, $4, NOW(), FALSE, 0, 0)
          ON CONFLICT (player_msisdn, attempt_date) DO NOTHING`,
         [`att_${session.session_id}`, `dc_${today}`, msisdn, today]
+      );
+    } else {
+      // Resuming existing in-progress session: reset question start timer to NOW()
+      await pool.query(
+        `UPDATE player_quiz_sessions
+         SET current_question_started_at = NOW()
+         WHERE session_id = $1`,
+        [session.session_id]
       );
     }
 
@@ -197,6 +219,10 @@ export class AuthoritativeGameEngine {
       })
       .filter(Boolean) as SanitizedQuestion[];
 
+    const existingAnswers: any[] = typeof session.session_answers === 'string'
+      ? JSON.parse(session.session_answers)
+      : (session.session_answers || []);
+
     return {
       success: true,
       sessionId: session.session_id,
@@ -204,6 +230,7 @@ export class AuthoritativeGameEngine {
       challengeDate: today,
       currentIndex: session.current_question_index,
       currentScore: session.score,
+      sessionAnswers: existingAnswers,
       questions: orderedQuestions,
     };
   }
@@ -388,6 +415,7 @@ export class AuthoritativeGameEngine {
         elapsedSeconds: parseFloat(Math.min(10.0, elapsedSeconds).toFixed(3)),
         nextQuestionIndex: nextIndex,
         isCompleted,
+        answers: existingAnswers,
       };
     } catch (err: any) {
       await client.query('ROLLBACK');

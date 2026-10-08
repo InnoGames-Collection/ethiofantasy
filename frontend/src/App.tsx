@@ -9,21 +9,23 @@ import {
   DailyChallengeState,
 } from './types/quiz';
 import { LEVELS } from './data/levelsData';
-import { loadUserProgress, saveUserProgress, resetUserProgress } from './services/storageService';
 import {
-  loadUserProfile,
-  saveUserProfile,
-  loadDailyChallengeState,
+  getDefaultUserProgress,
+  fetchUserProgressFromDb,
+  submitLevelProgressToDb,
+  fetchLevelQuestionsFromDb,
+} from './services/storageService';
+import {
+  getDefaultUserProfile,
+  getDefaultDailyChallengeState,
   fetchDailyChallengeState,
-  recordDailyChallengeScore,
   startDailyChallenge,
-  getTop10Leaderboard,
+  completeDailyChallenge,
+  fetchDailyChallengeReview,
   fetchTop10Leaderboard,
-  getDailyChallengeQuestions,
   getCurrentServiceDate,
   isDailyChallengeReviewLocked,
-  saveDailyChallengeReview,
-  getDailyChallengeReview,
+  maskMsisdn,
 } from './services/ethioFantasyService';
 import { sound } from './services/soundService';
 
@@ -45,11 +47,17 @@ export default function App() {
   const [activeNavTab, setActiveNavTab] = useState<BottomNavTab>('HOME');
   const [showAdminQuestionBank, setShowAdminQuestionBank] = useState<boolean>(false);
 
-  const [userProgress, setUserProgress] = useState<UserProgress>(loadUserProgress);
-  const [userProfile, setUserProfile] = useState<UserProfile>(loadUserProfile);
-  const [dailyChallengeState, setDailyChallengeState] = useState<DailyChallengeState>(() =>
-    loadDailyChallengeState(userProfile.msisdn)
-  );
+  // Strictly In-Memory & Database-Backed State (ZERO LocalStorage)
+  const [userProgress, setUserProgress] = useState<UserProgress>(getDefaultUserProgress);
+  const [userProfile, setUserProfile] = useState<UserProfile>(getDefaultUserProfile);
+  const [dailyChallengeState, setDailyChallengeState] = useState<DailyChallengeState>(getDefaultDailyChallengeState);
+
+  // Active Daily Challenge Session State (Loaded from PostgreSQL)
+  const [dailySessionId, setDailySessionId] = useState<string | undefined>(undefined);
+  const [dailyAttemptId, setDailyAttemptId] = useState<string | undefined>(undefined);
+  const [dailyInitialIndex, setDailyInitialIndex] = useState<number>(0);
+  const [dailyInitialResults, setDailyInitialResults] = useState<QuestionResult[]>([]);
+  const [dailyInitialScore, setDailyInitialScore] = useState<number>(0);
 
   const [activeLevel, setActiveLevel] = useState<LevelData | null>(null);
   const [isDailyChallenge, setIsDailyChallenge] = useState<boolean>(false);
@@ -88,16 +96,15 @@ export default function App() {
     return () => window.removeEventListener('popstate', handlePopState);
   }, [currentScreen]);
 
-  // Update total score
+  // Update total score in memory
   const handleUpdateScore = (newScore: number) => {
-    setUserProgress((prev) => {
-      const updated = { ...prev, score: Math.max(0, newScore) };
-      saveUserProgress(updated);
-      return updated;
-    });
+    setUserProgress((prev) => ({
+      ...prev,
+      score: Math.max(0, newScore),
+    }));
   };
 
-  // Update hearts
+  // Update hearts in memory
   const handleUpdateHearts = (newHearts: number) => {
     setUserProgress((prev) => ({ ...prev, hearts: Math.max(0, newHearts) }));
   };
@@ -107,44 +114,95 @@ export default function App() {
     setUserProgress((prev) => {
       const nextSound = !prev.soundEnabled;
       sound.setSoundEnabled(nextSound);
-      const updated = { ...prev, soundEnabled: nextSound };
-      saveUserProgress(updated);
-      return updated;
+      return { ...prev, soundEnabled: nextSound };
     });
   };
 
-  // Safe progress check: permanently preserves unlocked levels
+  // Safe progress check: refreshes from database
   const handleResetProgress = () => {
-    const safe = loadUserProgress();
-    setUserProgress(safe);
-    sound.setSoundEnabled(safe.soundEnabled);
+    if (userProfile.msisdn) {
+      fetchUserProgressFromDb(userProfile.msisdn).then(setUserProgress);
+    } else {
+      setUserProgress(getDefaultUserProgress());
+    }
   };
 
-  // Start Level from 100 Championship Levels
-  const handleSelectLevel = (level: LevelData) => {
-    setActiveLevel(level);
+  // Start Level from 100 Championship Levels (Dynamic DB Question Fetching)
+  const handleSelectLevel = async (level: LevelData) => {
+    sound.playTap();
+    // Query 10 fresh randomized questions from PostgreSQL for this level/category
+    const dbQuestions = await fetchLevelQuestionsFromDb(level.id);
+    const questionsToUse = (dbQuestions && dbQuestions.length > 0) ? dbQuestions : level.questions;
+
+    const randomizedLevel: LevelData = {
+      ...level,
+      questions: questionsToUse,
+    };
+
+    setActiveLevel(randomizedLevel);
     setIsDailyChallenge(false);
+    setDailyInitialIndex(0);
+    setDailyInitialResults([]);
+    setDailyInitialScore(0);
     setUserProgress((prev) => ({ ...prev, hearts: 5 }));
     window.history.pushState({ screen: 'PLAYING' }, '');
     setCurrentScreen('PLAYING');
   };
 
-  // Start Daily Challenge (Strictly 1 Attempt per Day)
+  // Start Daily Challenge (Strictly 1 Attempt per Day, Resumes In-Progress Session from PostgreSQL)
   const handleStartDailyChallenge = async () => {
+    sound.playTap();
     const today = getCurrentServiceDate();
     setActiveDailyDate(today);
+
     if (dailyChallengeState.completed && dailyChallengeState.date === today) {
       alert("Today's Daily Challenge is already completed. Available again tomorrow!");
       return;
     }
 
     const session = await startDailyChallenge(userProfile.msisdn);
-    if (!session.success || !session.questions) {
+    if (!session.success || !session.questions || session.questions.length === 0) {
       alert(session.error || "Today's Daily Challenge already completed.");
       return;
     }
 
     const dailyQuestions = session.questions;
+    const currentIndex = session.currentIndex || 0;
+    const currentScore = session.currentScore || 0;
+    const sessionAnswers = session.sessionAnswers || [];
+
+    // Map existing answers already recorded in PostgreSQL
+    const prevResults: QuestionResult[] = sessionAnswers.map((ans: any, idx: number) => {
+      const q = dailyQuestions[idx];
+      const selectedIdx = ans.selectedIndex ?? ans.selectedOptionIndex;
+      return {
+        questionNumber: idx + 1,
+        questionText: q?.questionText || `Question ${idx + 1}`,
+        categoryTitle: q?.categoryTitle || 'DAILY CHALLENGE',
+        imageType: q?.imageType,
+        imageIdentifier: q?.imageIdentifier,
+        options: q?.options || [],
+        selectedOptionIndex: selectedIdx,
+        userAnswer: (selectedIdx !== null && selectedIdx !== undefined && q?.options?.[selectedIdx])
+          ? q.options[selectedIdx]
+          : 'Timed Out',
+        correctAnswer: '',
+        correctAnswerIndex: 0,
+        isCorrect: Boolean(ans.isCorrect),
+        timeRemaining: Math.max(0, 10 - Math.round(ans.elapsedSeconds || 10)),
+        elapsedSeconds: ans.elapsedSeconds || 10,
+        baseScore: ans.baseScore || 0,
+        speedScore: ans.speedScore || 0,
+        finalQuestionScore: ans.questionScore || 0,
+      };
+    });
+
+    setDailySessionId(session.sessionId);
+    setDailyAttemptId(session.attemptId);
+    setDailyInitialIndex(currentIndex);
+    setDailyInitialResults(prevResults);
+    setDailyInitialScore(currentScore);
+
     const dailyLevel: LevelData = {
       id: 99999,
       levelNumber: dailyChallengeState.currentDayInCycle,
@@ -156,6 +214,7 @@ export default function App() {
       accentColor: 'from-amber-500 to-orange-600',
       questions: dailyQuestions,
     };
+
     setActiveLevel(dailyLevel);
     setIsDailyChallenge(true);
     window.history.pushState({ screen: 'PLAYING' }, '');
@@ -163,7 +222,7 @@ export default function App() {
   };
 
   // Level Finished (Called strictly after Question 10 is answered!)
-  const handleFinishLevel = (
+  const handleFinishLevel = async (
     results: QuestionResult[],
     earnedScore?: number,
     totalResponseTime?: number
@@ -177,72 +236,47 @@ export default function App() {
       setLatestLevelScore(pointsEarned);
 
       if (isDailyChallenge) {
-        // Record Daily Challenge Score and update 7-Day competition total strictly
-        saveDailyChallengeReview(
-          userProfile.msisdn,
-          dailyChallengeState.date,
-          results,
-          pointsEarned,
-          totalResponseTime || 45.0
-        );
-        const updatedDaily = recordDailyChallengeScore(
-          userProfile.msisdn,
-          pointsEarned,
-          totalResponseTime || 45.0
-        );
-        setDailyChallengeState(updatedDaily);
+        // Finalize Daily Challenge Attempt in PostgreSQL and update 7-Day competition total
+        if (dailyAttemptId && userProfile.msisdn) {
+          await completeDailyChallenge({
+            msisdn: userProfile.msisdn,
+            attemptId: dailyAttemptId,
+          });
+        }
+        // Refresh authoritative Daily Challenge State & Leaderboard directly from PostgreSQL
+        const updatedState = await fetchDailyChallengeState(userProfile.msisdn);
+        setDailyChallengeState(updatedState);
+        fetchTop10Leaderboard(userProfile.msisdn).then((info) => {
+          if (info && info.top10) setLeaderboardInfo(info);
+        });
       } else {
-        // Championship Level: Sequential unlocking of next level ONLY if passed (at least 9/10 correct)
-        // Level points are TRAINING points only and DO NOT affect 7-Day Competition
-        const isPassed = correctCount >= 9;
+        // Championship Level: Sequential unlocking in PostgreSQL
+        // Passing requirement: at least 9/10 correct
         const earnedStars = correctCount === 10 ? 3 : correctCount === 9 ? 2 : 0;
 
-        setUserProgress((prev) => {
-          const prevScoreForLevel = prev.levelScores[activeLevel.id] || 0;
-          const scoreDiff = Math.max(0, pointsEarned - prevScoreForLevel);
-          const prevStarsForLevel = prev.levelStars[activeLevel.id] || 0;
-          const starDiff = Math.max(0, earnedStars - prevStarsForLevel);
-
-          const updatedUnlocked = [...prev.unlockedLevelIds];
-          const updatedCompleted = [...prev.completedLevelIds];
-
-          // STRICT REQUIREMENT: Only when user has at least 9 correct answers should next level unlock
-          if (isPassed) {
-            const nextLevelId = activeLevel.id + 1;
-            if (nextLevelId <= 100 && !updatedUnlocked.includes(nextLevelId)) {
-              updatedUnlocked.push(nextLevelId);
-            }
-            if (!updatedCompleted.includes(activeLevel.id)) {
-              updatedCompleted.push(activeLevel.id);
-            }
-          }
-
-          const updatedLevelScores = {
-            ...prev.levelScores,
-            [activeLevel.id]: Math.max(prevScoreForLevel, pointsEarned),
-          };
-
-          const updated: UserProgress = {
+        if (userProfile.msisdn) {
+          const updatedProgress = await submitLevelProgressToDb({
+            msisdn: userProfile.msisdn,
+            levelId: activeLevel.id,
+            stars: earnedStars,
+            score: pointsEarned,
+            percentage: pct,
+          });
+          setUserProgress(updatedProgress);
+        } else {
+          // Unauthenticated fallback
+          setUserProgress((prev) => ({
             ...prev,
-            score: prev.score + scoreDiff,
-            stars: prev.stars + starDiff,
-            hearts: 5,
-            unlockedLevelIds: updatedUnlocked,
-            completedLevelIds: updatedCompleted,
-            levelStars: {
-              ...prev.levelStars,
-              [activeLevel.id]: Math.max(prevStarsForLevel, earnedStars),
-            },
-            levelScores: updatedLevelScores,
-            levelPercentages: {
-              ...prev.levelPercentages,
-              [activeLevel.id]: Math.max(prev.levelPercentages[activeLevel.id] || 0, pct),
-            },
-          };
-
-          saveUserProgress(updated);
-          return updated;
-        });
+            score: prev.score + pointsEarned,
+            stars: prev.stars + earnedStars,
+            unlockedLevelIds: earnedStars >= 2
+              ? Array.from(new Set([...prev.unlockedLevelIds, Math.min(100, activeLevel.id + 1)]))
+              : prev.unlockedLevelIds,
+            completedLevelIds: earnedStars >= 2
+              ? Array.from(new Set([...prev.completedLevelIds, activeLevel.id]))
+              : prev.completedLevelIds,
+          }));
+        }
       }
     }
 
@@ -254,6 +288,10 @@ export default function App() {
   const handleBackToLevels = () => {
     setActiveLevel(null);
     if (isDailyChallenge) {
+      // Refresh daily state so Home tab reflects held question index
+      if (userProfile.msisdn) {
+        fetchDailyChallengeState(userProfile.msisdn).then(setDailyChallengeState);
+      }
       setActiveNavTab('HOME');
     } else {
       setActiveNavTab('GAME');
@@ -261,8 +299,8 @@ export default function App() {
     setCurrentScreen('MAIN');
   };
 
-  // Replay current level (Permitted for training levels, STRICTLY DENIED for real Daily Challenge)
-  const handleReplayLevel = () => {
+  // Replay current level (Permitted for training levels with dynamic DB question shuffle, STRICTLY DENIED for real Daily Challenge)
+  const handleReplayLevel = async () => {
     if (isDailyChallenge) {
       setActiveLevel(null);
       setActiveNavTab('HOME');
@@ -270,6 +308,10 @@ export default function App() {
       return;
     }
     if (activeLevel) {
+      sound.playTap();
+      const dbQuestions = await fetchLevelQuestionsFromDb(activeLevel.id);
+      const questionsToUse = (dbQuestions && dbQuestions.length > 0) ? dbQuestions : activeLevel.questions;
+      setActiveLevel({ ...activeLevel, questions: questionsToUse });
       setUserProgress((prev) => ({ ...prev, hearts: 5 }));
       setCurrentScreen('PLAYING');
     } else {
@@ -278,15 +320,15 @@ export default function App() {
   };
 
   // Open Review screen
-  const handleOpenReview = () => {
-    if (isDailyChallenge && latestResults.length === 0) {
-      const savedReview = getDailyChallengeReview(
+  const handleOpenReview = async () => {
+    if (isDailyChallenge && userProfile.msisdn) {
+      const reviewData = await fetchDailyChallengeReview(
         userProfile.msisdn,
         activeDailyDate || dailyChallengeState.date
       );
-      if (savedReview && savedReview.results && savedReview.results.length > 0) {
-        setLatestResults(savedReview.results);
-        setLatestLevelScore(savedReview.levelScore);
+      if (reviewData.success && reviewData.results.length > 0) {
+        setLatestResults(reviewData.results);
+        setLatestLevelScore(reviewData.levelScore);
       }
     }
     window.history.pushState({ screen: 'REVIEW' }, '');
@@ -294,11 +336,13 @@ export default function App() {
   };
 
   // Open Daily Challenge Review directly from Home tab
-  const handleOpenDailyReviewFromHome = () => {
-    const savedReview = getDailyChallengeReview(userProfile.msisdn, dailyChallengeState.date);
-    if (savedReview && savedReview.results && savedReview.results.length > 0) {
-      setLatestResults(savedReview.results);
-      setLatestLevelScore(savedReview.levelScore);
+  const handleOpenDailyReviewFromHome = async () => {
+    if (userProfile.msisdn) {
+      const reviewData = await fetchDailyChallengeReview(userProfile.msisdn, dailyChallengeState.date);
+      if (reviewData.success && reviewData.results.length > 0) {
+        setLatestResults(reviewData.results);
+        setLatestLevelScore(reviewData.levelScore);
+      }
     }
     const dailyLevel: LevelData = {
       id: 99999,
@@ -329,50 +373,63 @@ export default function App() {
 
   // User Profile handlers
   const handleToggleSubscription = () => {
-    const updated = { ...userProfile, isSubscribed: !userProfile.isSubscribed };
-    setUserProfile(updated);
-    saveUserProfile(updated);
+    setUserProfile((prev) => ({ ...prev, isSubscribed: !prev.isSubscribed }));
   };
 
   const handleUpdateLanguage = (lang: 'en' | 'am' | 'om') => {
-    const updated = { ...userProfile, language: lang };
-    setUserProfile(updated);
-    saveUserProfile(updated);
+    setUserProfile((prev) => ({ ...prev, language: lang }));
   };
 
   const handleToggleNotifications = () => {
-    const updated = { ...userProfile, notificationsEnabled: !userProfile.notificationsEnabled };
-    setUserProfile(updated);
-    saveUserProfile(updated);
+    setUserProfile((prev) => ({ ...prev, notificationsEnabled: !prev.notificationsEnabled }));
   };
 
+  // STRICT ACCOUNT LOGOUT (Zero residual localStorage state, everything resets in-memory)
   const handleLogout = () => {
-    const updated = { ...userProfile, isLoggedIn: false };
-    setUserProfile(updated);
-    saveUserProfile(updated);
+    setUserProfile(getDefaultUserProfile());
+    setUserProgress(getDefaultUserProgress());
+    setDailyChallengeState(getDefaultDailyChallengeState());
+    setDailySessionId(undefined);
+    setDailyAttemptId(undefined);
+    setDailyInitialIndex(0);
+    setDailyInitialResults([]);
+    setDailyInitialScore(0);
+    setActiveLevel(null);
     setCurrentScreen('LOGIN');
   };
 
-  const handleLoginSuccess = (msisdn: string) => {
-    const updated: UserProfile = {
-      ...userProfile,
+  // STRICT ACCOUNT LOGIN (Loads that specific MSISDN's isolated data directly from PostgreSQL)
+  const handleLoginSuccess = async (msisdn: string) => {
+    const updatedProfile: UserProfile = {
+      ...getDefaultUserProfile(),
       msisdn,
+      maskedMsisdn: maskMsisdn(msisdn),
       isLoggedIn: true,
     };
-    setUserProfile(updated);
-    saveUserProfile(updated);
-    fetchDailyChallengeState(msisdn).then(setDailyChallengeState);
-    fetchTop10Leaderboard(msisdn).then((info) => {
-      if (info && info.top10) setLeaderboardInfo(info);
-    });
+    setUserProfile(updatedProfile);
+
+    // Fetch authoritative progression for this specific MSISDN directly from PostgreSQL
+    const [progress, dailyState, leaderboard] = await Promise.all([
+      fetchUserProgressFromDb(msisdn),
+      fetchDailyChallengeState(msisdn),
+      fetchTop10Leaderboard(msisdn),
+    ]);
+
+    setUserProgress(progress);
+    setDailyChallengeState(dailyState);
+    if (leaderboard && leaderboard.top10) {
+      setLeaderboardInfo(leaderboard);
+    }
+
     setCurrentScreen('MAIN');
     setActiveNavTab('HOME');
   };
 
   // 7-Day Top 10 Leaderboard Data (Real-Time API with graceful fallback)
-  const [leaderboardInfo, setLeaderboardInfo] = useState(() =>
-    getTop10Leaderboard(userProfile.msisdn, dailyChallengeState.sevenDayTotal)
-  );
+  const [leaderboardInfo, setLeaderboardInfo] = useState<{
+    top10: any[];
+    userPosition: any;
+  }>({ top10: [], userPosition: null });
 
   useEffect(() => {
     if (userProfile.msisdn) {
@@ -492,6 +549,12 @@ export default function App() {
             score={userProgress.score}
             hearts={userProgress.hearts}
             isDailyChallenge={isDailyChallenge}
+            userMsisdn={userProfile.msisdn}
+            sessionId={dailySessionId}
+            attemptId={dailyAttemptId}
+            initialQuestionIndex={dailyInitialIndex}
+            initialResults={dailyInitialResults}
+            initialScore={dailyInitialScore}
             onUpdateScore={handleUpdateScore}
             onUpdateHearts={handleUpdateHearts}
             onFinishLevel={handleFinishLevel}

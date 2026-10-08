@@ -74,11 +74,21 @@ export const DailyChallengeEngine = {
       }
     }
 
+    const sessionRes = await pool.query(
+      `SELECT session_id, current_question_index, score, total_response_time_ms, session_answers, is_completed
+       FROM player_quiz_sessions
+       WHERE player_msisdn = $1 AND challenge_date = $2 LIMIT 1`,
+      [norm, today]
+    );
+    const sessionRow = sessionRes.rows[0];
+
     const sevenDayTotal = Object.values(history).reduce((a, b) => a + b, 0);
     const totalCumulativeResponseTime = Object.values(historyTimes).reduce((a, b) => a + b, 0);
 
-    const completed = todayAttempt ? Boolean(todayAttempt.is_completed) : false;
-    const todayScore = todayAttempt ? todayAttempt.score || 0 : 0;
+    const completed = Boolean((todayAttempt && todayAttempt.is_completed) || (sessionRow && sessionRow.is_completed));
+    const todayScore = todayAttempt ? (todayAttempt.score || 0) : (sessionRow ? sessionRow.score || 0 : 0);
+    const hasActiveSession = Boolean(sessionRow && !completed);
+    const activeQuestionIndex = sessionRow ? sessionRow.current_question_index : 0;
 
     return {
       date: today,
@@ -92,16 +102,20 @@ export const DailyChallengeEngine = {
       sevenDayTotal,
       totalCumulativeResponseTime,
       lastSubmissionTimestamp: todayAttempt?.final_submission_timestamp?.toISOString() || undefined,
-      activeAttempt: (todayAttempt && !completed) ? {
-        attemptId: todayAttempt.attempt_id,
+      hasActiveSession,
+      activeQuestionIndex,
+      activeAttempt: (hasActiveSession || (todayAttempt && !completed)) ? {
+        attemptId: sessionRow ? `att_${sessionRow.session_id}` : todayAttempt?.attempt_id,
+        sessionId: sessionRow?.session_id,
         playerId: norm,
         challengeId: `dc_${today}`,
         challengeDate: today,
-        startedAt: todayAttempt.submitted_at?.toISOString() || getEatTimestampString(),
+        startedAt: todayAttempt?.submitted_at?.toISOString() || getEatTimestampString(),
         status: 'IN_PROGRESS',
         totalScore: todayScore,
-        totalResponseTime: (todayAttempt.total_response_time_ms || 0) / 1000,
-        answers: todayAttempt.answers || [],
+        currentQuestionIndex: activeQuestionIndex,
+        totalResponseTime: sessionRow ? ((sessionRow.total_response_time_ms || 0) / 1000) : ((todayAttempt?.total_response_time_ms || 0) / 1000),
+        answers: sessionRow?.session_answers || todayAttempt?.answers || [],
       } : null,
     };
   },

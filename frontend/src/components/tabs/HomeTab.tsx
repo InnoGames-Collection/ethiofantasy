@@ -272,18 +272,30 @@ export const HomeTab: React.FC<HomeTabProps> = ({
             <span className={`text-[10px] font-extrabold border px-2.5 py-0.5 rounded-full ${
               dailyState.completed
                 ? 'bg-emerald-500/30 border-emerald-300/50 text-emerald-100'
+                : (dailyState.activeAttempt || (dailyState as any).hasActiveSession)
+                ? 'bg-sky-400 text-slate-950 border-sky-300'
                 : 'bg-amber-400 text-slate-950 border-amber-300'
             }`}>
-              {dailyState.completed ? 'COMPLETED TODAY' : 'AVAILABLE TODAY'}
+              {dailyState.completed
+                ? 'COMPLETED TODAY'
+                : (dailyState.activeAttempt || (dailyState as any).hasActiveSession)
+                ? 'IN PROGRESS'
+                : 'AVAILABLE TODAY'}
             </span>
           </div>
 
           <h2 className="text-xl font-black tracking-tight text-white mb-1">
-            {dailyState.completed ? "Today's Challenge Completed" : "Today's Football Challenge"}
+            {dailyState.completed
+              ? "Today's Challenge Completed"
+              : (dailyState.activeAttempt || (dailyState as any).hasActiveSession)
+              ? "Today's Challenge in Progress"
+              : "Today's Football Challenge"}
           </h2>
           <p className="text-xs text-emerald-100 leading-snug mb-4">
             {dailyState.completed
               ? 'Your score is locked and counted towards the 7-day prize leaderboard. Next challenge available tomorrow!'
+              : (dailyState.activeAttempt || (dailyState as any).hasActiveSession)
+              ? `You answered ${(dailyState.activeAttempt?.currentQuestionIndex ?? (dailyState as any).activeQuestionIndex ?? 0)} of 10 questions. Resume to complete your 1 attempt for today!`
               : 'Answer 10 exclusive competition questions (10s timer + speed points) for the 7-day leaderboard.'}
           </p>
 
@@ -294,7 +306,7 @@ export const HomeTab: React.FC<HomeTabProps> = ({
                 Today's Score
               </span>
               <span className="text-2xl font-black text-amber-300 tabular-nums">
-                {dailyState.completed ? dailyState.todayScore : 0}{' '}
+                {dailyState.todayScore || 0}{' '}
                 <span className="text-xs text-amber-200 font-bold">POINTS</span>
               </span>
             </div>
@@ -364,7 +376,11 @@ export const HomeTab: React.FC<HomeTabProps> = ({
                 className="w-full py-3.5 px-4 rounded-2xl bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-slate-950 font-black text-xs uppercase tracking-wider shadow-lg shadow-amber-950/20 active:scale-98 transition-all flex items-center justify-center gap-2 cursor-pointer border border-amber-300"
               >
                 <Play className="w-4 h-4 fill-slate-950" />
-                <span>PLAY NOW</span>
+                <span>
+                  {(dailyState.activeAttempt || (dailyState as any).hasActiveSession)
+                    ? `CONTINUE CHALLENGE (Q${((dailyState.activeAttempt?.currentQuestionIndex ?? (dailyState as any).activeQuestionIndex ?? 0) + 1)}/10)`
+                    : 'PLAY NOW'}
+                </span>
               </button>
             </div>
           )}

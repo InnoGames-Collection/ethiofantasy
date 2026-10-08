@@ -145,9 +145,6 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
         return;
       }
 
-      if (data.token) {
-        localStorage.setItem('ethiofantasy_token', data.token);
-      }
       const normalized = normalizeMsisdn(phoneNumber);
       sound.playVictory();
       onLoginSuccess(normalized);

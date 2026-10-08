@@ -4,14 +4,24 @@ import { HeaderHud } from '../common/HeaderHud';
 import { QuestionImageCard } from '../common/QuestionImageCard';
 import { GoalAnimation } from '../common/GoalAnimation';
 import { sound } from '../../services/soundService';
-import { calculateQuestionScore } from '../../services/ethioFantasyService';
-import { Clock, ChevronRight, Zap } from 'lucide-react';
+import {
+  calculateQuestionScore,
+  calculateSpeedPoints,
+  submitDailyChallengeAnswer,
+} from '../../services/ethioFantasyService';
+import { Clock, ChevronRight } from 'lucide-react';
 
 interface QuestionScreenProps {
   level: LevelData;
   score: number;
   hearts: number;
   isDailyChallenge?: boolean;
+  userMsisdn?: string;
+  sessionId?: string;
+  attemptId?: string;
+  initialQuestionIndex?: number;
+  initialResults?: QuestionResult[];
+  initialScore?: number;
   onUpdateScore: (newScore: number) => void;
   onUpdateHearts: (newHearts: number) => void;
   onFinishLevel: (results: QuestionResult[], earnedScore: number, totalResponseTime?: number) => void;
@@ -23,48 +33,64 @@ export const QuestionScreen: React.FC<QuestionScreenProps> = ({
   score,
   hearts,
   isDailyChallenge = false,
+  userMsisdn = '',
+  sessionId,
+  attemptId,
+  initialQuestionIndex = 0,
+  initialResults = [],
+  initialScore = 0,
   onUpdateScore,
   onUpdateHearts,
   onFinishLevel,
   onBackToLevels,
 }) => {
-  const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
+  const [currentQuestionIndex, setCurrentQuestionIndex] = useState(initialQuestionIndex);
   const [selectedOptionIndex, setSelectedOptionIndex] = useState<number | null>(null);
   const [isAnswerLocked, setIsAnswerLocked] = useState(false);
   const [showGoalModal, setShowGoalModal] = useState(false);
-  const [results, setResults] = useState<QuestionResult[]>([]);
-  
+  const [results, setResults] = useState<QuestionResult[]>(initialResults);
+
   // 10s for Daily Challenge, 60s for standard training levels
   const QUESTION_TIME_LIMIT = isDailyChallenge ? 10 : 60;
   const [timeLeft, setTimeLeft] = useState(QUESTION_TIME_LIMIT);
   const [eliminatedOptions, setEliminatedOptions] = useState<number[]>([]);
   const [hintUsed, setHintUsed] = useState(false);
   const [expertUsed, setExpertUsed] = useState(false);
-  
-  const [challengeScoreEarned, setChallengeScoreEarned] = useState(0);
+
+  const [challengeScoreEarned, setChallengeScoreEarned] = useState(initialScore);
   const [totalResponseTime, setTotalResponseTime] = useState(0);
   const [lastQuestionEarned, setLastQuestionEarned] = useState(0);
+  const [isTimedOut, setIsTimedOut] = useState(false);
 
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const questionStartTimeRef = useRef<number>(Date.now());
-  const currentQuestion: Question = level.questions[currentQuestionIndex] || level.questions[0];
+  const currentQuestion: Question = level.questions[currentQuestionIndex] || level.questions[0] || {
+    id: 'placeholder',
+    categoryTitle: 'FOOTBALL QUIZ',
+    questionText: 'Loading question...',
+    type: 'trivia',
+    options: ['A', 'B', 'C', 'D'],
+    correctAnswerIndex: 0,
+  };
 
-  // Reset 1 life per level on level start or replay
+  // Reset 1 life per level on level start or replay (for level games)
   useEffect(() => {
     setHintUsed(false);
     setExpertUsed(false);
-    setCurrentQuestionIndex(0);
-    setResults([]);
-    setChallengeScoreEarned(0);
-    setTotalResponseTime(0);
-  }, [level.id]);
+    if (!isDailyChallenge) {
+      setCurrentQuestionIndex(0);
+      setResults([]);
+      setChallengeScoreEarned(0);
+      setTotalResponseTime(0);
+    }
+  }, [level.id, isDailyChallenge]);
 
   // Reset question-specific state on each new question
-  // NOTE: hintUsed and expertUsed are NOT reset here (1 life PER LEVEL!)
   useEffect(() => {
     setTimeLeft(QUESTION_TIME_LIMIT);
     setSelectedOptionIndex(null);
     setIsAnswerLocked(false);
+    setIsTimedOut(false);
     setShowGoalModal(false);
     setEliminatedOptions([]);
     questionStartTimeRef.current = Date.now();
@@ -75,7 +101,6 @@ export const QuestionScreen: React.FC<QuestionScreenProps> = ({
       setTimeLeft((prev) => {
         if (prev <= 1) {
           if (timerRef.current) clearInterval(timerRef.current);
-          handleTimeout();
           return 0;
         }
         if (isDailyChallenge ? prev <= 3 : prev <= 5) {
@@ -90,11 +115,21 @@ export const QuestionScreen: React.FC<QuestionScreenProps> = ({
     };
   }, [currentQuestionIndex]);
 
+  // Detect when countdown reaches 0 and trigger timeout
+  useEffect(() => {
+    if (timeLeft === 0 && !isAnswerLocked) {
+      handleTimeout();
+    }
+  }, [timeLeft, isAnswerLocked]);
+
   // Timeout handler: 0 points (Base = 0, Speed = 0)
-  const handleTimeout = () => {
+  const handleTimeout = async () => {
     if (isAnswerLocked) return;
     setIsAnswerLocked(true);
+    setIsTimedOut(true);
     sound.playWrong();
+
+    if (timerRef.current) clearInterval(timerRef.current);
 
     if (!isDailyChallenge) {
       const nextHearts = Math.max(0, hearts - 1);
@@ -102,8 +137,16 @@ export const QuestionScreen: React.FC<QuestionScreenProps> = ({
     }
 
     const elapsedSeconds = QUESTION_TIME_LIMIT;
+
     if (isDailyChallenge) {
-      setTotalResponseTime((prev) => prev + elapsedSeconds);
+      // Authoritative async submission to PostgreSQL
+      submitDailyChallengeAnswer({
+        msisdn: userMsisdn,
+        sessionId,
+        attemptId,
+        questionId: currentQuestion.id,
+        selectedOptionIndex: null,
+      }).catch((err) => console.warn('[Daily timeout sync error]', err));
     }
 
     const questionResult: QuestionResult = {
@@ -115,8 +158,10 @@ export const QuestionScreen: React.FC<QuestionScreenProps> = ({
       options: currentQuestion.options,
       selectedOptionIndex: null,
       userAnswer: 'Timed Out',
-      correctAnswer: currentQuestion.options[currentQuestion.correctAnswerIndex],
-      correctAnswerIndex: currentQuestion.correctAnswerIndex,
+      correctAnswer: typeof currentQuestion.correctAnswerIndex === 'number'
+        ? currentQuestion.options[currentQuestion.correctAnswerIndex] || ''
+        : '',
+      correctAnswerIndex: currentQuestion.correctAnswerIndex ?? 0,
       isCorrect: false,
       timeRemaining: 0,
       elapsedSeconds,
@@ -134,29 +179,52 @@ export const QuestionScreen: React.FC<QuestionScreenProps> = ({
   };
 
   // Option selection
-  const handleSelectOption = (index: number) => {
+  const handleSelectOption = async (index: number) => {
     if (isAnswerLocked || eliminatedOptions.includes(index)) return;
 
     if (timerRef.current) clearInterval(timerRef.current);
     setIsAnswerLocked(true);
     setSelectedOptionIndex(index);
 
-    const isCorrect = index === currentQuestion.correctAnswerIndex;
-    const selectedAnswerText = currentQuestion.options[index];
-    const correctAnswerText = currentQuestion.options[currentQuestion.correctAnswerIndex];
-
     const elapsedMs = Date.now() - questionStartTimeRef.current;
-    const elapsedSeconds = Math.min(QUESTION_TIME_LIMIT, Math.max(0, elapsedMs / 1000));
+    const elapsedSeconds = Math.min(QUESTION_TIME_LIMIT, Math.max(0.1, elapsedMs / 1000));
 
+    let isCorrect = false;
     let baseScore = 0;
     let speedScore = 0;
     let finalQuestionScore = 0;
 
     if (isDailyChallenge) {
-      const scoreCalc = calculateQuestionScore(isCorrect, elapsedSeconds);
-      baseScore = scoreCalc.baseScore;
-      speedScore = scoreCalc.speedScore;
-      finalQuestionScore = scoreCalc.finalScore;
+      // Authoritative PostgreSQL answer submission
+      try {
+        const resp = await submitDailyChallengeAnswer({
+          msisdn: userMsisdn,
+          sessionId,
+          attemptId,
+          questionId: currentQuestion.id,
+          selectedOptionIndex: index,
+        });
+
+        if (resp && resp.success) {
+          isCorrect = Boolean(resp.isCorrect);
+          baseScore = resp.baseScore ?? (isCorrect ? 1 : 0);
+          speedScore = resp.speedScore ?? (isCorrect ? calculateSpeedPoints(elapsedSeconds) : 0);
+          finalQuestionScore = resp.questionScore ?? (baseScore + speedScore);
+        } else {
+          // Client-side fallback if server unreachable
+          isCorrect = typeof currentQuestion.correctAnswerIndex === 'number' && index === currentQuestion.correctAnswerIndex;
+          const scoreCalc = calculateQuestionScore(isCorrect, elapsedSeconds);
+          baseScore = scoreCalc.baseScore;
+          speedScore = scoreCalc.speedScore;
+          finalQuestionScore = scoreCalc.finalScore;
+        }
+      } catch {
+        isCorrect = typeof currentQuestion.correctAnswerIndex === 'number' && index === currentQuestion.correctAnswerIndex;
+        const scoreCalc = calculateQuestionScore(isCorrect, elapsedSeconds);
+        baseScore = scoreCalc.baseScore;
+        speedScore = scoreCalc.speedScore;
+        finalQuestionScore = scoreCalc.finalScore;
+      }
 
       setTotalResponseTime((prev) => prev + elapsedSeconds);
       if (isCorrect) {
@@ -164,14 +232,22 @@ export const QuestionScreen: React.FC<QuestionScreenProps> = ({
         setLastQuestionEarned(finalQuestionScore);
       }
     } else {
-      // Training level scoring
-      const pointsEarned = 100 + timeLeft * 2;
+      // Level-Based Game: Calibrated points (1 base pt, +1 speed pt if answered <= 20s, max 2 pts per question)
+      isCorrect = index === currentQuestion.correctAnswerIndex;
+      const pointsEarned = isCorrect ? (1 + (timeLeft >= 40 ? 1 : 0)) : 0;
       finalQuestionScore = pointsEarned;
+      baseScore = isCorrect ? 1 : 0;
+      speedScore = pointsEarned > 1 ? 1 : 0;
       if (isCorrect) {
         setChallengeScoreEarned((prev) => prev + pointsEarned);
         setLastQuestionEarned(pointsEarned);
       }
     }
+
+    const selectedAnswerText = currentQuestion.options[index] || '';
+    const correctAnswerText = typeof currentQuestion.correctAnswerIndex === 'number'
+      ? currentQuestion.options[currentQuestion.correctAnswerIndex] || ''
+      : '';
 
     const questionResult: QuestionResult = {
       questionNumber: currentQuestionIndex + 1,
@@ -183,7 +259,7 @@ export const QuestionScreen: React.FC<QuestionScreenProps> = ({
       selectedOptionIndex: index,
       userAnswer: selectedAnswerText,
       correctAnswer: correctAnswerText,
-      correctAnswerIndex: currentQuestion.correctAnswerIndex,
+      correctAnswerIndex: currentQuestion.correctAnswerIndex ?? 0,
       isCorrect,
       timeRemaining: timeLeft,
       elapsedSeconds: parseFloat(elapsedSeconds.toFixed(3)),
@@ -196,8 +272,7 @@ export const QuestionScreen: React.FC<QuestionScreenProps> = ({
     setResults(newResults);
 
     if (isDailyChallenge) {
-      // DAILY CHALLENGE CRITICAL RULE: DO NOT reveal whether answer is correct or wrong!
-      // No green correct, no red wrong, no goal animation. Simply proceed to next question!
+      // DAILY CHALLENGE CRITICAL RULE: DO NOT reveal whether answer is correct or wrong during gameplay!
       sound.playTap();
       setTimeout(() => {
         advanceNextQuestion(newResults);
@@ -229,7 +304,10 @@ export const QuestionScreen: React.FC<QuestionScreenProps> = ({
       setCurrentQuestionIndex((prev) => prev + 1);
     } else {
       // Completed ALL questions in level!
-      onFinishLevel(latestResults, challengeScoreEarned, totalResponseTime);
+      // Synchronously compute total earned points and total time directly from complete latestResults
+      const totalEarned = latestResults.reduce((sum, r) => sum + r.finalQuestionScore, 0);
+      const totalTime = latestResults.reduce((sum, r) => sum + r.elapsedSeconds, 0);
+      onFinishLevel(latestResults, totalEarned, totalTime);
     }
   };
 
@@ -254,10 +332,9 @@ export const QuestionScreen: React.FC<QuestionScreenProps> = ({
     setEliminatedOptions(wrongIndices);
   };
 
-  const progressPercent = Math.round(((currentQuestionIndex) / level.questions.length) * 100);
+  const progressPercent = Math.round(((currentQuestionIndex + 1) / level.questions.length) * 100);
 
   return (
-    // BRIGHT, CLEAN, SPORTS-FOCUSED PALETTE (Requirement #24)
     <div className="min-h-screen w-full flex flex-col justify-between bg-gradient-to-b from-[#eef6ff] via-[#f7fbff] to-[#e8f3fe] text-slate-800 relative overflow-hidden select-none pb-4">
       {/* Soft pitch grass aura and subtle curves */}
       <div className="absolute top-0 inset-x-0 h-64 bg-gradient-to-b from-blue-100/60 to-transparent pointer-events-none" />
@@ -266,6 +343,10 @@ export const QuestionScreen: React.FC<QuestionScreenProps> = ({
       <div className="w-full max-w-md mx-auto">
         <HeaderHud
           mode="question"
+          isDailyChallenge={isDailyChallenge}
+          questionNumber={currentQuestionIndex + 1}
+          totalQuestions={level.questions.length}
+          timeLeft={timeLeft}
           score={isDailyChallenge ? score : (score + challengeScoreEarned)}
           hearts={hearts}
           levelNumber={level.levelNumber}
@@ -275,38 +356,29 @@ export const QuestionScreen: React.FC<QuestionScreenProps> = ({
           }}
         />
 
-        {/* Question Counter & Timer Bar */}
-        <div className="flex items-center justify-between px-5 py-2 text-xs">
-          <div className="flex items-center gap-1.5 font-bold text-blue-900">
-            <span className="bg-blue-100 text-blue-800 px-2.5 py-0.5 rounded-full font-black text-[11px]">
-              Question {currentQuestionIndex + 1}/{level.questions.length}
-            </span>
-          </div>
-
-          {/* Countdown Timer */}
-          <div className={`flex items-center gap-1.5 px-3 py-1 rounded-full font-mono font-bold text-xs shadow-xs ${
-            isDailyChallenge
-              ? timeLeft <= 3
-                ? 'bg-rose-600 text-white border border-rose-700 animate-pulse'
-                : 'bg-amber-100 text-amber-900 border border-amber-300'
-              : timeLeft <= 10
-              ? 'bg-rose-100 text-rose-700 border border-rose-300 animate-pulse'
-              : 'bg-white text-blue-800 border border-blue-200'
-          }`}>
-            <Clock className={`w-3.5 h-3.5 ${isDailyChallenge && timeLeft <= 3 ? 'text-white' : 'text-blue-600'}`} />
-            <span>00:{timeLeft < 10 ? `0${timeLeft}` : timeLeft}</span>
-            {isDailyChallenge && (
-              <span className={`text-[10px] font-black uppercase tracking-wider ml-0.5 ${
-                timeLeft <= 3 ? 'text-rose-100' : 'text-amber-800'
-              }`}>
-                (10s)
+        {/* Level-based secondary bar (only for Level-based game, not for daily challenge) */}
+        {!isDailyChallenge && (
+          <div className="flex items-center justify-between px-5 py-2 text-xs">
+            <div className="flex items-center gap-1.5 font-bold text-blue-900">
+              <span className="bg-blue-100 text-blue-800 px-2.5 py-0.5 rounded-full font-black text-[11px]">
+                Question {currentQuestionIndex + 1}/{level.questions.length}
               </span>
-            )}
+            </div>
+
+            {/* Countdown Timer */}
+            <div className={`flex items-center gap-1.5 px-3 py-1 rounded-full font-mono font-bold text-xs shadow-xs ${
+              timeLeft <= 10
+                ? 'bg-rose-100 text-rose-700 border border-rose-300 animate-pulse'
+                : 'bg-white text-blue-800 border border-blue-200'
+            }`}>
+              <Clock className="w-3.5 h-3.5 text-blue-600" />
+              <span>00:{timeLeft < 10 ? `0${timeLeft}` : timeLeft}</span>
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Progress Bar (Bright Blue & Green) */}
-        <div className="w-full px-5">
+        <div className="w-full px-5 mt-1">
           <div className="w-full h-2 rounded-full bg-blue-100 overflow-hidden shadow-inner">
             <div
               className="h-full rounded-full bg-gradient-to-r from-blue-600 to-emerald-500 transition-all duration-300"
@@ -342,11 +414,18 @@ export const QuestionScreen: React.FC<QuestionScreenProps> = ({
           </p>
         </div>
 
+        {/* Time expired banner */}
+        {isTimedOut && (
+          <div className="mb-2 px-3 py-1 rounded-full bg-rose-600 text-white font-black text-xs uppercase tracking-wider animate-shake shadow-md">
+            Time's Up! Moving to next question...
+          </div>
+        )}
+
         {/* 2x2 Answer Grid */}
         <div className="w-full max-w-[350px] grid grid-cols-2 gap-2.5">
           {currentQuestion.options.map((option, index) => {
             const isSelected = selectedOptionIndex === index;
-            const isCorrect = index === currentQuestion.correctAnswerIndex;
+            const isCorrect = typeof currentQuestion.correctAnswerIndex === 'number' && index === currentQuestion.correctAnswerIndex;
             const isEliminated = eliminatedOptions.includes(index);
 
             // Default: Crisp white button with blue border and slate text
@@ -356,7 +435,6 @@ export const QuestionScreen: React.FC<QuestionScreenProps> = ({
             if (isAnswerLocked) {
               if (isDailyChallenge) {
                 // DAILY CHALLENGE CRITICAL RULE: DO NOT reveal whether answer is correct or wrong!
-                // Neutral selected state for chosen option, neutral muted state for other options.
                 if (isSelected) {
                   buttonClasses = 'bg-blue-600 border-2 border-blue-600 text-white shadow-md';
                 } else {
@@ -421,12 +499,12 @@ export const QuestionScreen: React.FC<QuestionScreenProps> = ({
             sound.playTap();
             onBackToLevels();
           }}
-          className="text-xs font-bold text-slate-500 hover:text-blue-700 transition-colors"
+          className="text-xs font-bold text-slate-500 hover:text-blue-700 transition-colors cursor-pointer"
         >
-          Exit Level
+          {isDailyChallenge ? 'Pause / Hold Challenge' : 'Exit Level'}
         </button>
 
-        {isAnswerLocked && (
+        {isAnswerLocked && !isDailyChallenge && (
           <button
             onClick={() => {
               sound.playTap();
@@ -440,10 +518,10 @@ export const QuestionScreen: React.FC<QuestionScreenProps> = ({
         )}
       </div>
 
-      {/* GOAL! Celebratory Modal */}
-      {showGoalModal && (
+      {/* GOAL! Celebratory Modal (Level game only) */}
+      {showGoalModal && !isDailyChallenge && (
         <GoalAnimation
-          rewardCoins={isDailyChallenge ? lastQuestionEarned : 100}
+          rewardCoins={lastQuestionEarned}
           questionIndex={currentQuestionIndex}
           totalQuestions={level.questions.length}
           onContinue={() => advanceNextQuestion(results)}
